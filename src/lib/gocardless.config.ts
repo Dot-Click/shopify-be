@@ -1,7 +1,13 @@
-import { env } from "@/utils/env.util";
 const gocardless = require("gocardless-nodejs");
-import constants from "gocardless-nodejs/constants";
+import { env } from "@/utils/env.util";
+const constants = require("gocardless-nodejs/constants");
 
-const client = gocardless(env.GC_ACCESS_TOKEN, constants.Environments.Sandbox);
+const client = gocardless(
+  // We recommend storing your access token in an environment
+  // variable for security
+  env.GC_ACCESS_TOKEN,
+  // Change this to constants.Environments.Live when you're ready to go live
+  constants.Environments.Sandbox
+);
 
 export default client;

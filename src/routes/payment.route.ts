@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { paymentController } from "@/controllers/payment.controller";
+import { subscriptionController } from "@/controllers/payment.controller";
 
 const paymentRouter = Router();
 
-paymentRouter.post("/", paymentController);
+paymentRouter.post("/create", subscriptionController);
 
 export default paymentRouter;

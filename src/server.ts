@@ -18,7 +18,7 @@ import { config } from "dotenv";
 import express from "express";
 import morgan from "morgan";
 import helmet from "helmet";
-
+import paymentRouter from "./routes/payment.route";
 config();
 const app = express();
 const httpServer = createServer(app);
@@ -51,6 +51,7 @@ app.all("/api/auth/*splat", toNodeHandler(auth));
 
 // app.use(throttle("default")); enable after database connection
 app.use(express.json());
+app.use("/api/payment", paymentRouter);
 
 app.use(unknownRoutes);
 

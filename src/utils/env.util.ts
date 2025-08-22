@@ -20,6 +20,8 @@ const schemaObject = z.object({
   JWT_SECRET: z.string(),
   DATABASE_NAME: z.string(),
   GC_ACCESS_TOKEN: z.string(),
+  GC_WEBHOOK_SECRET: z.string(),
+  GC_ENV: z.enum(["sandbox", "live"]),
 });
 
 const envSchema = schemaObject.safeParse(process.env);

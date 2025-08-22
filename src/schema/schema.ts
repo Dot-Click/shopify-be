@@ -50,6 +50,95 @@ export const users = pgTable("users", {
   shopify_api_secret: text("shopify_api_secret"),
   shopify_url: text("shopify_url"),
   image_public_id: text("image_public_id"),
+  // TODO: add image_public_id
+  subscription_status: text("subscription_status").default("inactive"), // inactive, pending, active, cancelled
+  gocardless_customer_id: text("gocardless_customer_id"),
+  gocardless_mandate_id: text("gocardless_mandate_id"),
+  subscription_id: text("subscription_id"),
+  subscription_start_date: timestamp("subscription_start_date"),
+  subscription_end_date: timestamp("subscription_end_date"),
+  trial_end_date: timestamp("trial_end_date"),
+  is_account_active: boolean("is_account_active").default(false),
+});
+
+export const payment_sessions = pgTable("payment_sessions", {
+  id: text("id").primaryKey(),
+  user_id: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  session_token: text("session_token").notNull(),
+  billing_request_id: text("billing_request_id").notNull(),
+  redirect_flow_id: text("redirect_flow_id").notNull(),
+  plan_name: text("plan_name").notNull(),
+  amount: integer("amount").notNull(), // in pence/cents
+  currency: text("currency").notNull().default("GBP"),
+  status: text("status").notNull().default("pending"), // pending, completed, failed, expired
+  created_at: timestamp("created_at")
+    .$defaultFn(() => new Date())
+    .notNull(),
+  updated_at: timestamp("updated_at")
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
+export const payments = pgTable("payments", {
+  id: text("id").primaryKey(),
+  user_id: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  payment_session_id: text("payment_session_id").references(
+    () => payment_sessions.id
+  ),
+  gocardless_payment_id: text("gocardless_payment_id").notNull(),
+  mandate_id: text("mandate_id").notNull(),
+  amount: integer("amount").notNull(),
+  currency: text("currency").notNull().default("GBP"),
+  status: text("status").notNull(), // pending_submission, submitted, confirmed, paid_out, cancelled, customer_approval_denied, failed
+  plan_name: text("plan_name").notNull(),
+  description: text("description"),
+  created_at: timestamp("created_at")
+    .$defaultFn(() => new Date())
+    .notNull(),
+  updated_at: timestamp("updated_at")
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
+export const subscriptions = pgTable("subscriptions", {
+  id: text("id").primaryKey(),
+  user_id: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  gocardless_subscription_id: text("gocardless_subscription_id").notNull(),
+  mandate_id: text("mandate_id").notNull(),
+  plan_name: text("plan_name").notNull(),
+  amount: integer("amount").notNull(),
+  currency: text("currency").notNull().default("GBP"),
+  interval: text("interval").notNull().default("monthly"), // monthly, yearly
+  status: text("status").notNull(), // pending_customer_approval, customer_approval_denied, active, finished, cancelled, paused
+  start_date: timestamp("start_date"),
+  end_date: timestamp("end_date"),
+  next_payment_date: timestamp("next_payment_date"),
+  created_at: timestamp("created_at")
+    .$defaultFn(() => new Date())
+    .notNull(),
+  updated_at: timestamp("updated_at")
+    .$defaultFn(() => new Date())
+    .notNull(),
+});
+
+export const webhook_events = pgTable("webhook_events", {
+  id: text("id").primaryKey(),
+  gocardless_event_id: text("gocardless_event_id").notNull().unique(),
+  resource_type: text("resource_type").notNull(),
+  action: text("action").notNull(),
+  resource_id: text("resource_id").notNull(),
+  processed: boolean("processed").notNull().default(false),
+  created_at: timestamp("created_at")
+    .$defaultFn(() => new Date())
+    .notNull(),
+  processed_at: timestamp("processed_at"),
+  error_message: text("error_message"),
 });
 
 export const session = pgTable("session", {
