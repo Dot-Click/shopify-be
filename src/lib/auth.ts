@@ -3,6 +3,9 @@ import { database } from "../configs/connection.config";
 import * as schema from "@/schema/schema";
 import { betterAuth } from "better-auth";
 import { env } from "@/utils/env.util";
+import { adminApprovalNotificationTemplate } from "@/utils/sendgrid.util";
+import { sendgridClient } from "@/configs/sendgrid.config";
+import { eq } from "drizzle-orm";
 
 const isProduction = process.env.NODE_ENV === "production";
 export const auth = betterAuth({
@@ -42,11 +45,62 @@ export const auth = betterAuth({
     enabled: true,
   },
   emailVerification: {
-    sendVerificationEmail: async () => {
-      // Send verification email to user
+    sendVerificationEmail: async ({
+      user,
+      url,
+    }: {
+      user: any;
+      url: string;
+    }) => {
+      const autoActivation = process.env.AUTO_ACTIVATION === "true";
+
+      if (autoActivation) {
+        await database
+          .update(schema.users)
+          .set({ emailVerified: true })
+          .where(eq(schema.users.id, user.id));
+
+        console.log(`User ${user.email} auto-activated`);
+        return;
+      }
+
+      const approvalLink = url;
+      const subscriptionPlan = user.package || "Not Specified";
+      const userName = user.name || user.email.split("@")[0];
+      const userEmail = user.email;
+      const companyName = user.company_name || "Not Provided";
+      const shopifyUrl = user.shopify_url || "Not Provided";
+      const companyRegistrationNumber =
+        user.company_registration_number || "Not Provided";
+      const averageOrdersPerMonth =
+        user.average_orders_per_month || "Not Provided";
+
+      console.log("This is the user", user);
+
+      const msg = {
+        to: env.ADMIN_EMAIL!,
+        from: {
+          email: env.SENDGRID_SENDER_EMAIL!,
+          name: env.SENDGRID_SENDER_NAME!,
+        },
+        subject: "New User Registration - Approval Required",
+        html: adminApprovalNotificationTemplate({
+          userName,
+          userEmail,
+          companyName,
+          shopifyUrl,
+          companyRegistrationNumber,
+          averageOrdersPerMonth,
+          subscriptionPlan,
+          approvalLink,
+        }),
+        replyTo: env.SENDGRID_SENDER_EMAIL!,
+      };
+
+      await sendgridClient.send(msg);
     },
-    autoSignInAfterVerification: true,
-    sendOnSignUp: true,
+    // autoSignInAfterVerification: true,
+    sendOnSignUp: false,
   },
   user: {
     modelName: "users",
