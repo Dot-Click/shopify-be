@@ -14,6 +14,10 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at")
     .$defaultFn(() => /* @__PURE__ */ new Date())
     .notNull(),
+  role: text("role"),
+  banned: boolean("banned"),
+  banReason: text("ban_reason"),
+  banExpires: timestamp("ban_expires"),
   company_name: text("company_name"),
   mobile_number: text("mobile_number"),
   company_registration_number: text("company_registration_number"),
@@ -23,7 +27,6 @@ export const users = pgTable("users", {
   shopify_api_key: text("shopify_api_key"),
   shopify_api_secret: text("shopify_api_secret"),
   shopify_url: text("shopify_url"),
-  image_public_id: text("image_public_id"),
 });
 
 export const session = pgTable("session", {
@@ -37,6 +40,7 @@ export const session = pgTable("session", {
   userId: text("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  impersonatedBy: text("impersonated_by"),
 });
 
 export const account = pgTable("account", {

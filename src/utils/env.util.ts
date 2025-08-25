@@ -10,7 +10,7 @@ const schemaObject = z.object({
   BETTER_AUTH_SECRET: z.string(),
   CLOUDINARY_API_KEY: z.string(),
   GOOGLE_CLIENT_ID: z.string(),
-  BETTER_AUTH_URL: z.string(),
+  // BETTER_AUTH_URL: z.string(),
   FRONTEND_DOMAIN: z.string(),
   CONNECTION_URL: z.string(),
   BACKEND_DOMAIN: z.string(),

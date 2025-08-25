@@ -2,6 +2,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { database } from "../configs/connection.config";
 import * as schema from "@/schema/schema";
 import { betterAuth } from "better-auth";
+import { admin as adminPlugin } from "better-auth/plugins";
 import { env } from "@/utils/env.util";
 import { adminApprovalNotificationTemplate } from "@/utils/sendgrid.util";
 import { sendgridClient } from "@/configs/sendgrid.config";
@@ -13,7 +14,7 @@ export const auth = betterAuth({
   secret: env.COOKIE_SECRET,
   trustedOrigins: [env.FRONTEND_DOMAIN],
   session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 days ( session expiry )
+    expiresIn: 60 * 60 * 24 * 7,
     updateAge: 60 * 60 * 24, // 1 day( "expiresIn = now + expiry" after every updateAge time, if session is used )
     cookieCache: {
       enabled: true, // Enable caching session in cookie
@@ -33,6 +34,7 @@ export const auth = betterAuth({
     },
   },
   // signup/signin/reset-password
+  plugins: [adminPlugin()],
   emailAndPassword: {
     sendResetPassword: async () => {
       // Send reset password email
@@ -149,11 +151,6 @@ export const auth = betterAuth({
         type: "string",
         required: false,
         fieldName: "shopify_url",
-      },
-      image_public_id: {
-        type: "string",
-        required: false,
-        fieldName: "image_public_id",
       },
     },
     changeEmail: {
