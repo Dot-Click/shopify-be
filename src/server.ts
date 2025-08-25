@@ -20,6 +20,8 @@ import morgan from "morgan";
 import helmet from "helmet";
 import paymentRouter from "./routes/payment.route";
 import userRouter from "./routes/user.route";
+import shopifyRouter from "./routes/shopify.route";
+
 config();
 const app = express();
 const httpServer = createServer(app);
@@ -46,6 +48,7 @@ app.use(express.static("dist"));
 app.use(cors(corsOptions));
 app.use(cookieParser());
 io.use(connAuthBridge);
+app.set("trust proxy", true);
 
 app.use(morgan("dev"));
 app.all("/api/auth/*splat", toNodeHandler(auth));
@@ -54,6 +57,7 @@ app.use(throttle("default"));
 app.use(express.json());
 app.use("/api/payment", paymentRouter);
 app.use("/api/user", userRouter);
+app.use("/api/shopify", shopifyRouter);
 
 app.use(unknownRoutes);
 

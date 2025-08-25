@@ -51,7 +51,7 @@ export const users = pgTable("users", {
   plan: text("plan"),
   package: text("package"),
   shopify_api_key: text("shopify_api_key"),
-  shopify_api_secret: text("shopify_api_secret"),
+  shopify_access_token: text("shopify_access_token"),
   shopify_url: text("shopify_url"),
 });
 

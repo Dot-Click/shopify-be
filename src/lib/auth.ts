@@ -142,10 +142,10 @@ export const auth = betterAuth({
         required: false,
         fieldName: "shopify_api_key",
       },
-      shopify_api_secret: {
+      shopify_access_token: {
         type: "string",
         required: false,
-        fieldName: "shopify_api_secret",
+        fieldName: "shopify_access_token",
       },
       shopify_url: {
         type: "string",
