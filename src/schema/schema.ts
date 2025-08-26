@@ -5,26 +5,28 @@ import {
   varchar,
   boolean,
   timestamp,
-  // ReferenceConfig,
+  numeric,
+  ReferenceConfig,
 } from "drizzle-orm/pg-core";
 // import { createInsertSchema } from "drizzle-zod";
-// import { createId } from "@paralleldrive/cuid2";
+import { createId } from "@paralleldrive/cuid2";
+import { relations } from "drizzle-orm";
 
-// const timeStamps = {
-//   createdAt: timestamp("created_at").defaultNow(),
-//   updatedAt: timestamp("updated_at").$onUpdateFn(() => new Date()),
-// };
+const timeStamps = {
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").$onUpdateFn(() => new Date()),
+};
 
-// type UUIDOptions = Exclude<Parameters<typeof varchar>[1], undefined>;
+type UUIDOptions = Exclude<Parameters<typeof varchar>[1], undefined>;
 
-// const uuid = (columnName?: string, options?: UUIDOptions) =>
-//   varchar(columnName ?? "id", options).$defaultFn(() => createId());
+const uuid = (columnName?: string, options?: UUIDOptions) =>
+  varchar(columnName ?? "id", options).$defaultFn(() => createId());
 
-// const foreignkeyRef = (
-//   columnName: string,
-//   refColumn: ReferenceConfig["ref"],
-//   actions?: ReferenceConfig["actions"]
-// ) => varchar(columnName, { length: 128 }).references(refColumn, actions);
+const foreignkeyRef = (
+  columnName: string,
+  refColumn: ReferenceConfig["ref"],
+  actions?: ReferenceConfig["actions"]
+) => varchar(columnName, { length: 128 }).references(refColumn, actions);
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
@@ -54,6 +56,46 @@ export const users = pgTable("users", {
   shopify_access_token: text("shopify_access_token"),
   shopify_url: text("shopify_url"),
 });
+
+export const customers = pgTable("customers", {
+  id: uuid("id").primaryKey(),
+  name: text("name"),
+  email: text("email"),
+  phone: text("phone"),
+  ...timeStamps,
+});
+
+export const orders = pgTable("orders", {
+  id: text("id").primaryKey(),
+  name: varchar("name", { length: 50 }).notNull(),
+  totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).notNull(),
+  customerId: varchar("customer_id").notNull(),
+  customerEmail: varchar("customer_email", { length: 150 }),
+  customerPhone: varchar("customer_phone", { length: 20 }),
+  ...timeStamps,
+});
+
+export const orderItems = pgTable("order_items", {
+  id: text("id").primaryKey(),
+  orderId: foreignkeyRef("order_id", () => orders.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  quantity: integer("quantity").notNull(),
+  // price: numeric("price", { precision: 12, scale: 2 }).notNull(),
+  ...timeStamps,
+});
+
+// TODO: Relations B/W orders and orderLineItems
+export const orderRelations = relations(orders, ({ many }) => ({
+  orderItems: many(orderItems),
+}));
+
+export const orderItemsRelations = relations(orderItems, ({ one }) => ({
+  order: one(orders, {
+    fields: [orderItems.orderId],
+    references: [orders.id],
+  }),
+}));
 
 export const session = pgTable("session", {
   id: text("id").primaryKey(),
