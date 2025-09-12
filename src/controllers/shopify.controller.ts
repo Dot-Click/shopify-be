@@ -2,113 +2,163 @@ import { database } from "@/configs/connection.config";
 import axios from "axios";
 import { Request, Response } from "express";
 import status from "http-status";
-import { eq } from "drizzle-orm";
-import { customers, orderItems, orders } from "@/schema/schema";
+import { eq, ne } from "drizzle-orm";
+import { orderItems, orders, users } from "@/schema/schema";
 
-export const getCustomers = async (
+/**
+ * This is to fetch all the customers from the Shopfiy of logged in user and the other controllers should be deleted.
+ */
+export const getCustomerRefundsAcrossStores = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const data = req.user;
-
+    const data = req.user; // logged in store
     const storeUrl = data?.shopify_url;
     const accessToken = data?.shopify_access_token;
 
-    let customer: any[] = [];
-    let hasNextPage = true;
-    let cursor: string | null = null;
-    // let count = 0;
+    if (!storeUrl || !accessToken) {
+      res
+        .status(status.UNAUTHORIZED)
+        .json({ error: "Missing Shopify credentials" });
+    }
 
-    while (hasNextPage) {
-      const query: any = `
-        {
-          customers(first: 20 ${cursor ? `, after: "${cursor}"` : ""}) {
-            edges {
-              cursor
-              node {
-                id
-                displayName
-                email
-                phone
-                image{
-                  url
-                }
-               orders(first: 10){
-                edges{
-                  node{
-                    refunds(first: 10){
+    // Fetch customers from THIS store only
+    const query = `
+      {
+        customers(first: 20) {
+          edges {
+            node {
+              id
+              displayName
+              email
+              orders(first: 50) {
+                edges {
+                  node {
+                    refunds(first: 10) {
                       id
                     }
                   }
                 }
-               }
-                
               }
-            }
-            pageInfo {
-              hasNextPage
             }
           }
         }
-      `;
+      }
+    `;
 
-      const response = await axios.post(
-        `${storeUrl}/admin/api/2025-07/graphql.json`,
-        { query },
-        {
-          headers: {
-            "X-Shopify-Access-Token": accessToken,
-            "Content-Type": "application/json",
-          },
-        }
+    const response = await axios.post(
+      `${storeUrl}/admin/api/2025-07/graphql.json`,
+      { query },
+      {
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const customerEdges = response.data.data.customers.edges;
+
+    // Fetch all other stores (exclude logged-in one)
+    const otherStores = await database
+      .select()
+      .from(users)
+      .where(ne(users.shopify_url, storeUrl as string));
+
+    const results: any[] = [];
+
+    for (const edge of customerEdges) {
+      const node = edge.node;
+      const email = node.email;
+
+      const totalOrders = node.orders.edges.length;
+      const totalRefunds = node.orders.edges.reduce(
+        (acc: number, o: any) => acc + o.node.refunds.length,
+        0
       );
 
-      const customerData = response.data.data.customers;
-      const edges = customerData.edges;
+      const riskLevel =
+        totalOrders > 0 ? Math.round((totalRefunds / totalOrders) * 100) : 0;
 
-      for (const edge of edges) {
-        const node = edge.node;
+      // Check how many OTHER stores this customer refunded in
+      const refundedStores = new Set<string>();
 
-        const existing = await database
-          .select()
-          .from(customers)
-          .where(eq(customers.id, node.id));
+      for (const s of otherStores) {
+        try {
+          const refundQuery = `
+            {
+              customers(first: 1, query: "email:${email}") {
+                edges {
+                  node {
+                    orders(first: 20) {
+                      edges {
+                        node {
+                          refunds(first: 1) {
+                            id
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          `;
 
-        if (existing.length > 0) {
-          await database
-            .update(customers)
-            .set({
-              name: node.displayName,
-              email: node.email,
-              phone: node.phone,
-            })
-            .where(eq(customers.id, node.id));
-        } else {
-          await database.insert(customers).values({
-            id: node.id,
-            name: node.displayName,
-            email: node.email,
-            phone: node.phone,
-          });
+          const resp = await axios.post(
+            `${s.shopify_url}/admin/api/2025-07/graphql.json`,
+            { query: refundQuery },
+            {
+              headers: {
+                "X-Shopify-Access-Token": s.shopify_access_token,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          const custEdges = resp.data.data.customers.edges;
+          if (custEdges.length > 0) {
+            const custNode = custEdges[0].node;
+            const refundsHere = custNode.orders.edges.some(
+              (o: any) => o.node.refunds.length > 0
+            );
+            if (refundsHere) {
+              refundedStores.add(s.shopify_url as string);
+            }
+          }
+        } catch (err) {
+          console.error("Error checking other store:", s.shopify_url, err);
         }
-
-        customer.push(node);
       }
 
-      hasNextPage = customerData.pageInfo.hasNextPage;
-      cursor = edges.length > 0 ? edges[edges.length - 1].cursor : null;
+      results.push({
+        id: node.id,
+        displayName: node.displayName,
+        email,
+        riskLevel,
+        totalOrders,
+        totalRefunds,
+        refundsFromStores: refundedStores.size,
+      });
     }
 
-    res.status(status.OK).json(customer);
+    res.status(status.OK).json(results);
   } catch (error: any) {
-    console.error("Error fetching customers:", error.response?.data || error);
-    res.status(status.INTERNAL_SERVER_ERROR).json({
-      error: "Failed to fetch customers",
-    });
+    console.error(
+      "Error fetching customer risk:",
+      error.response?.data || error
+    );
+    res
+      .status(status.INTERNAL_SERVER_ERROR)
+      .json({ error: "Failed to fetch customer risk" });
   }
 };
 
+/**
+ *
+ * This is to fetch all the orders from the Shopfiy
+ */
 export const getOrders = async (req: Request, res: Response) => {
   try {
     const data = req.user;
@@ -129,6 +179,7 @@ export const getOrders = async (req: Request, res: Response) => {
             edges {
               cursor
               node {
+                
                 id
                 name
                 createdAt
@@ -263,6 +314,112 @@ export const getOrders = async (req: Request, res: Response) => {
     console.error("Error fetching orders:", error.response?.data || error);
     res.status(status.INTERNAL_SERVER_ERROR).json({
       error: "Failed to fetch orders",
+    });
+  }
+};
+
+/**
+ * this is for admin dashboard, to fetch all customer of all stores
+ */
+export const getCustomersForAdminDashboard = async (
+  _req: Request,
+  res: Response
+) => {
+  try {
+    const allStores = await database.select().from(users);
+
+    const customerMap: Record<string, any> = {};
+
+    for (const s of allStores) {
+      if (!s.shopify_url?.includes(".myshopify.com")) continue; // skip fake stores
+
+      const query = `
+      {
+        customers(first: 20) {
+          edges {
+            node {
+              id
+              displayName
+              email
+              orders(first: 50) {
+                edges {
+                  node {
+                    refunds(first: 10) {
+                      id
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }`;
+
+      const resp = await axios.post(
+        `${s.shopify_url}/admin/api/2025-07/graphql.json`,
+        { query },
+        {
+          headers: {
+            "X-Shopify-Access-Token": s.shopify_access_token,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const customerEdges = resp.data.data.customers.edges;
+
+      for (const edge of customerEdges) {
+        const node = edge.node;
+        const email = node.email;
+        if (!email) continue;
+
+        const totalOrders = node.orders.edges.length;
+        const totalRefunds = node.orders.edges.reduce(
+          (acc: number, o: any) => acc + o.node.refunds.length,
+          0
+        );
+
+        if (!customerMap[email]) {
+          customerMap[email] = {
+            id: node.id,
+            displayName: node.displayName,
+            email,
+            totalOrders: 0,
+            totalRefunds: 0,
+            storesRefunded: new Set<string>(),
+          };
+        }
+
+        customerMap[email].totalOrders += totalOrders;
+        customerMap[email].totalRefunds += totalRefunds;
+
+        // ✅ only add store if refunds exist
+        if (totalRefunds > 0) {
+          customerMap[email].storesRefunded.add(s.shopify_url as string);
+        }
+      }
+    }
+
+    const results = Object.values(customerMap).map((c: any) => ({
+      email: c.email,
+      displayName: c.displayName,
+      totalOrders: c.totalOrders,
+      totalRefunds: c.totalRefunds,
+      riskLevel:
+        c.totalOrders > 0
+          ? Math.round((c.totalRefunds / c.totalOrders) * 100)
+          : 0,
+      refundsFromStores: c.storesRefunded.size, // ✅ fixed
+    }));
+
+    res.status(status.OK).json(results);
+  } catch (error: any) {
+    console.error(
+      "Error fetching customers for admin dashboard:",
+      error.response?.data || error
+    );
+    res.status(status.INTERNAL_SERVER_ERROR).json({
+      error: "Failed to fetch customers for admin dashboard",
     });
   }
 };
