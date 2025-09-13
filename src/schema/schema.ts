@@ -97,6 +97,21 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
   }),
 }));
 
+// *This is the schema of settings
+export const settings = pgTable("settings", {
+  id: uuid("id").primaryKey(),
+  storeId: foreignkeyRef("store_id", () => users.id, { onDelete: "cascade" }),
+  lostParcelThreshold: integer("lost_parcel_threshold"),
+  lostParcelPeriod: integer("lost_parcel_period"),
+  lossRateThreshold: integer("loss_rate_threshold"),
+  matchSensitivity: text("match_sensitivity"),
+  ...timeStamps,
+});
+
+export const settingsRelations = relations(settings, ({ many }) => ({
+  settings: many(settings),
+}));
+
 export const session = pgTable("session", {
   id: text("id").primaryKey(),
   expiresAt: timestamp("expires_at").notNull(),

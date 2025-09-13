@@ -85,6 +85,7 @@ export const getCustomerRefundsAcrossStores = async (
       const refundedStores = new Set<string>();
 
       for (const s of otherStores) {
+        if (!s.shopify_url?.includes(".myshopify.com")) continue;
         try {
           const refundQuery = `
             {
@@ -331,7 +332,7 @@ export const getCustomersForAdminDashboard = async (
     const customerMap: Record<string, any> = {};
 
     for (const s of allStores) {
-      if (!s.shopify_url?.includes(".myshopify.com")) continue; // skip fake stores
+      if (!s.shopify_url?.includes(".myshopify.com")) continue;
 
       const query = `
       {
@@ -341,9 +342,11 @@ export const getCustomersForAdminDashboard = async (
               id
               displayName
               email
+              phone
               orders(first: 50) {
                 edges {
                   node {
+                    legacyResourceId
                     refunds(first: 10) {
                       id
                     }
@@ -379,21 +382,51 @@ export const getCustomersForAdminDashboard = async (
           0
         );
 
+        let lastKnownIp = null;
+
+        if (node.orders.edges.length > 0) {
+          const mostRecentOrder = node.orders.edges[0].node;
+          const orderId = mostRecentOrder.legacyResourceId;
+
+          try {
+            const orderDetailsResp = await axios.get(
+              `${s.shopify_url}/admin/api/2025-07/orders/${orderId}.json?fields=browser_ip`,
+              {
+                headers: {
+                  "X-Shopify-Access-Token": s.shopify_access_token,
+                },
+              }
+            );
+
+            lastKnownIp = orderDetailsResp.data.order.browser_ip;
+          } catch (apiError: any) {
+            console.error(
+              `Failed to fetch order ${orderId} for IP:`,
+              apiError.response?.data
+            );
+          }
+        }
+
         if (!customerMap[email]) {
           customerMap[email] = {
             id: node.id,
             displayName: node.displayName,
             email,
+            phone: node.phone,
             totalOrders: 0,
             totalRefunds: 0,
             storesRefunded: new Set<string>(),
+            lastKnownIp: null,
           };
         }
 
         customerMap[email].totalOrders += totalOrders;
         customerMap[email].totalRefunds += totalRefunds;
 
-        // ✅ only add store if refunds exist
+        if (lastKnownIp && !customerMap[email].lastKnownIp) {
+          customerMap[email].lastKnownIp = lastKnownIp;
+        }
+
         if (totalRefunds > 0) {
           customerMap[email].storesRefunded.add(s.shopify_url as string);
         }
@@ -401,9 +434,12 @@ export const getCustomersForAdminDashboard = async (
     }
 
     const results = Object.values(customerMap).map((c: any) => ({
+      id: c.id,
       email: c.email,
       displayName: c.displayName,
+      lastKnownIp: c.lastKnownIp,
       totalOrders: c.totalOrders,
+      phone: c.phone,
       totalRefunds: c.totalRefunds,
       riskLevel:
         c.totalOrders > 0
