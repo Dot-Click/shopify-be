@@ -3,7 +3,13 @@ import axios from "axios";
 import { Request, Response } from "express";
 import status from "http-status";
 import { eq, ne } from "drizzle-orm";
-import { orderItems, orders, users } from "@/schema/schema";
+import {
+  customers,
+  fulfillmentOrders,
+  orderItems,
+  orders,
+  users,
+} from "@/schema/schema";
 
 /**
  * This is to fetch all the customers from the Shopfiy of logged in user and the other controllers should be deleted.
@@ -13,7 +19,7 @@ export const getCustomerRefundsAcrossStores = async (
   res: Response
 ): Promise<void> => {
   try {
-    const data = req.user; // logged in store
+    const data = req.user;
     const storeUrl = data?.shopify_url;
     const accessToken = data?.shopify_access_token;
 
@@ -21,9 +27,9 @@ export const getCustomerRefundsAcrossStores = async (
       res
         .status(status.UNAUTHORIZED)
         .json({ error: "Missing Shopify credentials" });
+      return;
     }
 
-    // Fetch customers from THIS store only
     const query = `
       {
         customers(first: 20) {
@@ -32,6 +38,7 @@ export const getCustomerRefundsAcrossStores = async (
               id
               displayName
               email
+              numberOfOrders
               orders(first: 50) {
                 edges {
                   node {
@@ -58,9 +65,13 @@ export const getCustomerRefundsAcrossStores = async (
       }
     );
 
+    if (response.data.errors) {
+      console.error("Shopify API returned errors:", response.data.errors);
+      throw new Error("Failed to fetch data from Shopify due to API errors.");
+    }
+
     const customerEdges = response.data.data.customers.edges;
 
-    // Fetch all other stores (exclude logged-in one)
     const otherStores = await database
       .select()
       .from(users)
@@ -73,15 +84,15 @@ export const getCustomerRefundsAcrossStores = async (
       const email = node.email;
 
       const totalOrders = node.orders.edges.length;
+
       const totalRefunds = node.orders.edges.reduce(
-        (acc: number, o: any) => acc + o.node.refunds.length,
+        (acc: number, o: any) => acc + (o.node.refunds?.length || 0),
         0
       );
 
       const riskLevel =
         totalOrders > 0 ? Math.round((totalRefunds / totalOrders) * 100) : 0;
 
-      // Check how many OTHER stores this customer refunded in
       const refundedStores = new Set<string>();
 
       for (const s of otherStores) {
@@ -96,7 +107,11 @@ export const getCustomerRefundsAcrossStores = async (
                       edges {
                         node {
                           refunds(first: 1) {
-                            id
+                            
+                              
+                                id
+                              
+                            }
                           }
                         }
                       }
@@ -121,8 +136,9 @@ export const getCustomerRefundsAcrossStores = async (
           const custEdges = resp.data.data.customers.edges;
           if (custEdges.length > 0) {
             const custNode = custEdges[0].node;
+
             const refundsHere = custNode.orders.edges.some(
-              (o: any) => o.node.refunds.length > 0
+              (o: any) => (o.node.refunds?.length || 0) > 0
             );
             if (refundsHere) {
               refundedStores.add(s.shopify_url as string);
@@ -131,6 +147,35 @@ export const getCustomerRefundsAcrossStores = async (
         } catch (err) {
           console.error("Error checking other store:", s.shopify_url, err);
         }
+      }
+
+      const existingProfile = await database
+        .select()
+        .from(customers)
+        .where(eq(customers.id, node.id));
+
+      if (existingProfile.length > 0) {
+        // If profile exists, UPDATE it
+        await database
+          .update(customers)
+          .set({
+            totalOrders: totalOrders,
+            totalRefunded: totalRefunds,
+            riskLevel: riskLevel,
+            refundsFromStores: refundedStores.size,
+            updatedAt: new Date(), // Update the timestamp
+          })
+          .where(eq(customers.id, node.id));
+      } else {
+        // If profile does not exist, INSERT it
+        await database.insert(customers).values({
+          id: node.id,
+          email: email,
+          totalOrders: totalOrders,
+          totalRefunded: totalRefunds,
+          riskLevel: riskLevel,
+          refundsFromStores: refundedStores.size,
+        });
       }
 
       results.push({
@@ -166,7 +211,7 @@ export const getOrders = async (req: Request, res: Response) => {
 
     const storeUrl = data?.shopify_url;
     const accessToken = data?.shopify_access_token;
-
+    console.log(storeUrl, storeUrl);
     let order: any[] = [];
     // let hasNextPage = true;
     // let cursor: string | null = null;
@@ -175,45 +220,80 @@ export const getOrders = async (req: Request, res: Response) => {
     // while (hasNextPage) {
 
     const query = `
-        {
-          orders(first: 10) {
-            edges {
-              cursor
-              node {
-                
-                id
-                name
-                createdAt
-                totalPriceSet {
-                  shopMoney {
-                    amount
-                    currencyCode
-                  }
-                }
-                customer {
-                  id
-                  firstName
-                  lastName
-                  email
-                  phone
-                }
-                lineItems(first: 5) {
-                  edges {
-                    node {
-                      id
-                      name
-                      quantity           
-                    }
-                  }
-                }
+  query GetOrdersWithFulfillment {
+    orders(first: 10) {
+      edges {
+        cursor
+        node {
+          id
+          name
+          createdAt
+          totalPriceSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+          }
+          customer {
+            id
+            firstName
+            lastName
+            email
+            phone
+          }
+          riskLevel
+          refunds(){
+            id
+            totalRefundedSet {
+              shopMoney {
+                amount
+                currencyCode
               }
             }
-            pageInfo {
-              hasNextPage
+          }
+          lineItems(first: 5) {
+            edges {
+              node {
+                id
+                name
+                quantity
+              }
+            }
+          }
+
+          fulfillmentOrders(first: 5) {
+            nodes {
+              id
+              status
+              requestStatus
+              createdAt
+              updatedAt
+              fulfillAt
+              fulfillBy
+              fulfillmentHolds {
+                reason
+                reasonNotes
+              }
+              deliveryMethod {
+                methodType
+                minDeliveryDateTime
+                maxDeliveryDateTime
+              }
+              destination {
+                city
+                countryCode
+                zip
+              }
             }
           }
         }
-      `;
+      }
+      pageInfo {
+        hasNextPage
+      }
+    }
+  }
+    `;
 
     const response = await axios.post(
       `${storeUrl}/admin/api/2025-07/graphql.json`,
@@ -232,6 +312,13 @@ export const getOrders = async (req: Request, res: Response) => {
     for (const edge of edges) {
       const node = edge.node;
 
+      let totalRefunded = 0;
+      if (node.refunds && node.refunds.length > 0) {
+        totalRefunded = node.refunds.reduce((sum: number, refund: any) => {
+          return sum + Number(refund.totalRefundedSet.shopMoney.amount);
+        }, 0);
+      }
+
       const existing = await database
         .select()
         .from(orders)
@@ -247,6 +334,9 @@ export const getOrders = async (req: Request, res: Response) => {
             customerId: node.customer.id,
             customerEmail: node.customer.email,
             customerPhone: node.customer.phone,
+            riskLevel: node.riskLevel,
+            totalRefunded: totalRefunded.toString(),
+            updatedAt: new Date(),
           })
           .where(eq(orders.id, node.id));
       } else {
@@ -258,6 +348,10 @@ export const getOrders = async (req: Request, res: Response) => {
           customerId: node.customer.id,
           customerEmail: node.customer.email,
           customerPhone: node.customer.phone,
+          riskLevel: node.riskLevel,
+          totalRefunded: totalRefunded.toString(),
+          createdAt: node.createdAt ? new Date(node.createdAt) : new Date(),
+          updatedAt: new Date(),
         });
       }
 
@@ -287,6 +381,53 @@ export const getOrders = async (req: Request, res: Response) => {
         }
       }
 
+      for (const fo of node.fulfillmentOrders.nodes) {
+        const existingFO = await database
+          .select()
+          .from(fulfillmentOrders)
+          .where(eq(fulfillmentOrders.id, fo.id));
+
+        if (existingFO.length > 0) {
+          await database
+            .update(fulfillmentOrders)
+            .set({
+              orderId: node.id,
+              status: fo.status,
+              requestStatus: fo.requestStatus,
+              fulfillAt: fo.fulfillAt ? new Date(fo.fulfillAt as string) : null,
+              fulfillBy: fo.fulfillBy ? new Date(fo.fulfillBy as string) : null,
+              deliveryMethod: fo.deliveryMethod?.methodType,
+              deliveryMinDate: fo.deliveryMethod?.minDeliveryDateTime,
+              deliveryMaxDate: fo.deliveryMethod?.maxDeliveryDateTime,
+              destCity: fo.destination?.city,
+              destCountry: fo.destination?.countryCode,
+              destZip: fo.destination?.zip,
+              onHoldReason: fo.fulfillmentHolds?.[0]?.reason || null,
+            })
+            .where(eq(fulfillmentOrders.id, fo.id));
+        } else {
+          await database.insert(fulfillmentOrders).values({
+            id: fo.id,
+            orderId: node.id,
+            status: fo.status,
+            requestStatus: fo.requestStatus,
+            fulfillAt: fo.fulfillAt ? new Date(fo.fulfillAt as string) : null,
+            fulfillBy: fo.fulfillBy ? new Date(fo.fulfillBy as string) : null,
+            deliveryMethod: fo.deliveryMethod?.methodType,
+            deliveryMinDate: fo.deliveryMethod?.minDeliveryDateTime
+              ? new Date(fo.deliveryMethod.minDeliveryDateTime as string)
+              : null,
+            deliveryMaxDate: fo.deliveryMethod?.maxDeliveryDateTime
+              ? new Date(fo.deliveryMethod.maxDeliveryDateTime as string)
+              : null,
+            destCity: fo.destination?.city,
+            destCountry: fo.destination?.countryCode,
+            destZip: fo.destination?.zip,
+            onHoldReason: fo.fulfillmentHolds?.[0]?.reason || null,
+          });
+        }
+      }
+
       order.push(node);
     }
 
@@ -302,6 +443,31 @@ export const getOrders = async (req: Request, res: Response) => {
         customerId: node.customer?.id,
         customerEmail: node.customer?.email,
         customerPhone: node.customer?.phone,
+        riskLevel: node.riskLevel,
+        totalRefunded: node.totalRefunded,
+        fulfillmentOrders: node.fulfillmentOrders.nodes.map((fo: any) => ({
+          id: fo.id,
+          status: fo.status,
+          requestStatus: fo.requestStatus,
+          createdAt: fo.createdAt,
+          updatedAt: fo.updatedAt,
+          fulfillAt: fo.fulfillAt,
+          fulfillBy: fo.fulfillBy,
+          deliveryMethod: fo.deliveryMethod?.methodType || null,
+          deliveryMinDate: fo.deliveryMethod?.minDeliveryDateTime || null,
+          deliveryMaxDate: fo.deliveryMethod?.maxDeliveryDateTime || null,
+          destination: {
+            city: fo.destination?.city || null,
+            countryCode: fo.destination?.countryCode || null,
+            zip: fo.destination?.zip || null,
+          },
+          holds: fo.fulfillmentHolds.map((h: any) => ({
+            reason: h.reason,
+            notes: h.reasonNotes,
+          })),
+        })),
+
+        // Items still included
         items: node.lineItems.edges.map((li: any) => ({
           orderItemId: li.node.id,
           orderItemName: li.node.name,
@@ -343,12 +509,14 @@ export const getCustomersForAdminDashboard = async (
               displayName
               email
               phone
+              numberOfOrders
               orders(first: 50) {
                 edges {
                   node {
                     legacyResourceId
                     refunds(first: 10) {
                       id
+
                     }
                   }
                 }

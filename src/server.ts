@@ -21,6 +21,7 @@ import helmet from "helmet";
 import paymentRouter from "./routes/payment.route";
 import userRouter from "./routes/user.route";
 import shopifyRouter from "./routes/shopify.route";
+import settingsRouter from "./routes/settings.route";
 
 config();
 const app = express();
@@ -58,6 +59,7 @@ app.use(express.json());
 app.use("/api/payment", paymentRouter);
 app.use("/api/user", userRouter);
 app.use("/api/shopify", shopifyRouter);
+app.use("/api/settings", settingsRouter);
 
 app.use(unknownRoutes);
 

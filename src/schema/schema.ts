@@ -62,6 +62,10 @@ export const customers = pgTable("customers", {
   name: text("name"),
   email: text("email"),
   phone: text("phone"),
+  totalRefunded: numeric("total_refunded", { precision: 12, scale: 2 }),
+  totalOrders: integer("total_orders"),
+  riskLevel: integer("risk_level"),
+  refundsFromStores: integer("refunds_from_stores"),
   ...timeStamps,
 });
 
@@ -73,6 +77,19 @@ export const orders = pgTable("orders", {
   customerId: varchar("customer_id").notNull(),
   customerEmail: varchar("customer_email", { length: 150 }),
   customerPhone: varchar("customer_phone", { length: 20 }),
+  displayFulfillmentStatus: varchar("display_fulfillment_status", {
+    length: 50,
+  }),
+  fulfillmentStatus: varchar("fulfillment_status", { length: 50 }),
+  trackingNumber: varchar("tracking_number", { length: 255 }),
+  trackingCompany: varchar("tracking_company", { length: 255 }),
+  deliveredAt: timestamp("delivered_at"),
+  disputeOpened: boolean("dispute_opened").default(false).notNull(),
+  flagged: boolean("flagged").default(false),
+  flagReason: text("flag_reason"),
+  riskLevel: varchar("risk_level", { length: 50 }),
+  totalRefunded: numeric("total_refunded", { precision: 12, scale: 2 }),
+  riskRecommendation: varchar("risk_recommendation", { length: 50 }),
   ...timeStamps,
 });
 
@@ -85,10 +102,43 @@ export const orderItems = pgTable("order_items", {
   ...timeStamps,
 });
 
+export const fulfillmentOrders = pgTable("fulfillment_orders", {
+  id: text("id").primaryKey(),
+  orderId: foreignkeyRef("order_id", () => orders.id, { onDelete: "cascade" }),
+
+  status: varchar("status", { length: 50 }),
+  requestStatus: varchar("request_status", { length: 50 }),
+  fulfillAt: timestamp("fulfill_at"),
+  fulfillBy: timestamp("fulfill_by"),
+
+  deliveryMethod: varchar("delivery_method", { length: 50 }),
+  deliveryMinDate: timestamp("delivery_min_date"),
+  deliveryMaxDate: timestamp("delivery_max_date"),
+
+  destCity: varchar("dest_city", { length: 100 }),
+  destCountry: varchar("dest_country", { length: 5 }),
+  destZip: varchar("dest_zip", { length: 20 }),
+
+  onHoldReason: text("on_hold_reason"),
+
+  ...timeStamps,
+});
+
 // TODO: Relations B/W orders and orderLineItems
 export const orderRelations = relations(orders, ({ many }) => ({
   orderItems: many(orderItems),
+  fulfillmentOrders: many(fulfillmentOrders),
 }));
+
+export const fulfillmentOrdersRelations = relations(
+  fulfillmentOrders,
+  ({ one }) => ({
+    order: one(orders, {
+      fields: [fulfillmentOrders.orderId],
+      references: [orders.id],
+    }),
+  })
+);
 
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({
   order: one(orders, {
