@@ -4,10 +4,11 @@ import { Request, Response } from "express";
 import status from "http-status";
 import { eq, ne } from "drizzle-orm";
 import {
-  customers,
+  // customers,
   fulfillmentOrders,
   orderItems,
   orders,
+  settings,
   users,
 } from "@/schema/schema";
 
@@ -27,32 +28,31 @@ export const getCustomerRefundsAcrossStores = async (
       res
         .status(status.UNAUTHORIZED)
         .json({ error: "Missing Shopify credentials" });
-      return;
     }
 
+    // Fetch customers from THIS store only
     const query = `
-      {
-        customers(first: 20) {
-          edges {
-            node {
-              id
-              displayName
-              email
-              numberOfOrders
-              orders(first: 50) {
-                edges {
-                  node {
-                    refunds(first: 10) {
-                      id
+          {
+            customers(first: 20) {
+              edges {
+                node {
+                  id
+                  displayName
+                  email
+                  orders(first: 50) {
+                    edges {
+                      node {
+                        refunds(first: 10) {
+                          id
+                        }
+                      }
                     }
                   }
                 }
               }
             }
           }
-        }
-      }
-    `;
+        `;
 
     const response = await axios.post(
       `${storeUrl}/admin/api/2025-07/graphql.json`,
@@ -65,13 +65,9 @@ export const getCustomerRefundsAcrossStores = async (
       }
     );
 
-    if (response.data.errors) {
-      console.error("Shopify API returned errors:", response.data.errors);
-      throw new Error("Failed to fetch data from Shopify due to API errors.");
-    }
-
     const customerEdges = response.data.data.customers.edges;
 
+    // Fetch all other stores (exclude logged-in one)
     const otherStores = await database
       .select()
       .from(users)
@@ -84,33 +80,31 @@ export const getCustomerRefundsAcrossStores = async (
       const email = node.email;
 
       const totalOrders = node.orders.edges.length;
-
       const totalRefunds = node.orders.edges.reduce(
-        (acc: number, o: any) => acc + (o.node.refunds?.length || 0),
+        (acc: number, o: any) => acc + o.node.refunds.length,
         0
       );
 
       const riskLevel =
         totalOrders > 0 ? Math.round((totalRefunds / totalOrders) * 100) : 0;
 
+      // Check how many OTHER stores this customer refunded in
       const refundedStores = new Set<string>();
 
       for (const s of otherStores) {
         if (!s.shopify_url?.includes(".myshopify.com")) continue;
         try {
           const refundQuery = `
-            {
-              customers(first: 1, query: "email:${email}") {
-                edges {
-                  node {
-                    orders(first: 20) {
-                      edges {
-                        node {
-                          refunds(first: 1) {
-                            
-                              
+                {
+                  customers(first: 1, query: "email:${email}") {
+                    edges {
+                      node {
+                        orders(first: 20) {
+                          edges {
+                            node {
+                              refunds(first: 1) {
                                 id
-                              
+                              }
                             }
                           }
                         }
@@ -118,9 +112,7 @@ export const getCustomerRefundsAcrossStores = async (
                     }
                   }
                 }
-              }
-            }
-          `;
+              `;
 
           const resp = await axios.post(
             `${s.shopify_url}/admin/api/2025-07/graphql.json`,
@@ -136,9 +128,8 @@ export const getCustomerRefundsAcrossStores = async (
           const custEdges = resp.data.data.customers.edges;
           if (custEdges.length > 0) {
             const custNode = custEdges[0].node;
-
             const refundsHere = custNode.orders.edges.some(
-              (o: any) => (o.node.refunds?.length || 0) > 0
+              (o: any) => o.node.refunds.length > 0
             );
             if (refundsHere) {
               refundedStores.add(s.shopify_url as string);
@@ -147,35 +138,6 @@ export const getCustomerRefundsAcrossStores = async (
         } catch (err) {
           console.error("Error checking other store:", s.shopify_url, err);
         }
-      }
-
-      const existingProfile = await database
-        .select()
-        .from(customers)
-        .where(eq(customers.id, node.id));
-
-      if (existingProfile.length > 0) {
-        // If profile exists, UPDATE it
-        await database
-          .update(customers)
-          .set({
-            totalOrders: totalOrders,
-            totalRefunded: totalRefunds,
-            riskLevel: riskLevel,
-            refundsFromStores: refundedStores.size,
-            updatedAt: new Date(), // Update the timestamp
-          })
-          .where(eq(customers.id, node.id));
-      } else {
-        // If profile does not exist, INSERT it
-        await database.insert(customers).values({
-          id: node.id,
-          email: email,
-          totalOrders: totalOrders,
-          totalRefunded: totalRefunds,
-          riskLevel: riskLevel,
-          refundsFromStores: refundedStores.size,
-        });
       }
 
       results.push({
@@ -500,6 +462,14 @@ export const getCustomersForAdminDashboard = async (
     for (const s of allStores) {
       if (!s.shopify_url?.includes(".myshopify.com")) continue;
 
+      // ✅ fetch store settings from DB
+      const storeSettings = await database
+        .select()
+        .from(settings)
+        .where(eq(settings.storeId, s.id));
+
+      const currentSettings = storeSettings[0] || {};
+
       const query = `
       {
         customers(first: 20) {
@@ -516,7 +486,6 @@ export const getCustomersForAdminDashboard = async (
                     legacyResourceId
                     refunds(first: 10) {
                       id
-
                     }
                   }
                 }
@@ -575,6 +544,32 @@ export const getCustomersForAdminDashboard = async (
           }
         }
 
+        // ✅ Risk calculation (per customer, per store)
+        const lossRate =
+          totalOrders > 0 ? (totalRefunds / totalOrders) * 100 : 0;
+
+        let isRisky = false;
+        let riskReasons: string[] = [];
+
+        if (
+          currentSettings.lostParcelThreshold &&
+          totalRefunds >= currentSettings.lostParcelThreshold
+        ) {
+          isRisky = true;
+          riskReasons.push(`Exceeded lost parcel threshold (${totalRefunds})`);
+        }
+
+        if (
+          currentSettings.lossRateThreshold &&
+          lossRate >= Number(currentSettings.lossRateThreshold)
+        ) {
+          isRisky = true;
+          riskReasons.push(
+            `Exceeded loss rate threshold (${lossRate.toFixed(1)}%)`
+          );
+        }
+
+        // ✅ Merge into customerMap
         if (!customerMap[email]) {
           customerMap[email] = {
             id: node.id,
@@ -585,6 +580,8 @@ export const getCustomersForAdminDashboard = async (
             totalRefunds: 0,
             storesRefunded: new Set<string>(),
             lastKnownIp: null,
+            riskLevel: 0,
+            reasons: [] as string[],
           };
         }
 
@@ -598,9 +595,16 @@ export const getCustomersForAdminDashboard = async (
         if (totalRefunds > 0) {
           customerMap[email].storesRefunded.add(s.shopify_url as string);
         }
+
+        // Save risk info (merge reasons across stores if needed)
+        if (isRisky) {
+          customerMap[email].riskLevel = Math.min(lossRate, 100);
+          customerMap[email].reasons.push(...riskReasons);
+        }
       }
     }
 
+    // ✅ Now transform final results
     const results = Object.values(customerMap).map((c: any) => ({
       id: c.id,
       email: c.email,
@@ -609,11 +613,9 @@ export const getCustomersForAdminDashboard = async (
       totalOrders: c.totalOrders,
       phone: c.phone,
       totalRefunds: c.totalRefunds,
-      riskLevel:
-        c.totalOrders > 0
-          ? Math.round((c.totalRefunds / c.totalOrders) * 100)
-          : 0,
-      refundsFromStores: c.storesRefunded.size, // ✅ fixed
+      riskLevel: c.riskLevel,
+      refundsFromStores: c.storesRefunded.size,
+      reasons: c.reasons,
     }));
 
     res.status(status.OK).json(results);
