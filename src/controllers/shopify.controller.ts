@@ -56,6 +56,15 @@ export const getCustomerRefundsAcrossStores = async (
             }
           }
         }
+          webhookSubscriptions(first: 10) {
+    edges {
+      node {
+        id
+        topic
+        callbackUrl
+      }
+    }
+  }
       }
     `;
 
@@ -71,6 +80,8 @@ export const getCustomerRefundsAcrossStores = async (
     );
 
     const customerEdges = response.data.data.customers.edges;
+    // const testingpurpose = response.data.data;
+    // console.log("testingpurpose", testingpurpose);
 
     const otherStores = await database
       .select()

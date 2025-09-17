@@ -34,7 +34,10 @@ export async function registerWebhook(shopUrl: string, accessToken: string) {
     }
   );
 
-  console.log("RESPONSE:-", response.data);
+  console.log(
+    "RESPONSE:-",
+    response.data.data.webhookSubscriptionCreate.webhookSubscription
+  );
   console.log(
     "Errors:-",
     response.data.data.webhookSubscriptionCreate.userErrors
