@@ -15,6 +15,13 @@
       "when": 1756136537171,
       "tag": "0001_swift_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1758138869975,
+      "tag": "0002_parched_vengeance",
+      "breakpoints": true
     }
   ]
 }
