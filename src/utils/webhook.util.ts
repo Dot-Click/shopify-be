@@ -33,7 +33,7 @@ export async function registerWebhook(shopUrl: string, accessToken: string) {
       },
     }
   );
-
+  // For delopment
   console.log(
     "RESPONSE:-",
     response.data.data.webhookSubscriptionCreate.webhookSubscription
