@@ -4,16 +4,17 @@ import { Request, Response } from "express";
 import status from "http-status";
 import { eq, ne } from "drizzle-orm";
 import {
-  // customers,
+  customers,
   fulfillmentOrders,
   orderItems,
   orders,
   settings,
   users,
 } from "@/schema/schema";
+import { logger } from "@/utils/logger.util";
 
 /**
- * This is to fetch all the customers from the Shopfiy of logged in user and the other controllers should be deleted.
+ * This is to fetch all the customers from the Shopfiy of logged in user.
  */
 export const getCustomerRefundsAcrossStores = async (
   req: Request,
@@ -23,36 +24,40 @@ export const getCustomerRefundsAcrossStores = async (
     const data = req.user;
     const storeUrl = data?.shopify_url;
     const accessToken = data?.shopify_access_token;
+    const storeId = data?.id; // Get the current store's ID from the user object
 
-    if (!storeUrl || !accessToken) {
+    if (!storeUrl || !accessToken || !storeId) {
       res
         .status(status.UNAUTHORIZED)
-        .json({ error: "Missing Shopify credentials" });
+        .json({ error: "Missing Shopify credentials or Store ID" });
+      return;
     }
 
-    // Fetch customers from THIS store only
+    // STEP 1: Modified GraphQL query to fetch phone and tags
     const query = `
-          {
-            customers(first: 20) {
-              edges {
-                node {
-                  id
-                  displayName
-                  email
-                  orders(first: 50) {
-                    edges {
-                      node {
-                        refunds(first: 10) {
-                          id
-                        }
-                      }
+      {
+        customers(first: 20) {
+          edges {
+            node {
+              id
+              displayName
+              email
+              phone
+              tags
+              orders(first: 50) {
+                edges {
+                  node {
+                    refunds(first: 10) {
+                      id
                     }
                   }
                 }
               }
             }
           }
-        `;
+        }
+      }
+    `;
 
     const response = await axios.post(
       `${storeUrl}/admin/api/2025-07/graphql.json`,
@@ -67,13 +72,13 @@ export const getCustomerRefundsAcrossStores = async (
 
     const customerEdges = response.data.data.customers.edges;
 
-    // Fetch all other stores (exclude logged-in one)
     const otherStores = await database
       .select()
       .from(users)
       .where(ne(users.shopify_url, storeUrl as string));
 
-    const results: any[] = [];
+    // An array to hold promises for all the database operations
+    const upsertPromises = [];
 
     for (const edge of customerEdges) {
       const node = edge.node;
@@ -88,32 +93,13 @@ export const getCustomerRefundsAcrossStores = async (
       const riskLevel =
         totalOrders > 0 ? Math.round((totalRefunds / totalOrders) * 100) : 0;
 
-      // Check how many OTHER stores this customer refunded in
       const refundedStores = new Set<string>();
 
       for (const s of otherStores) {
+        // ... (your existing logic for checking other stores remains the same)
         if (!s.shopify_url?.includes(".myshopify.com")) continue;
         try {
-          const refundQuery = `
-                {
-                  customers(first: 1, query: "email:${email}") {
-                    edges {
-                      node {
-                        orders(first: 20) {
-                          edges {
-                            node {
-                              refunds(first: 1) {
-                                id
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              `;
-
+          const refundQuery = `{ customers(first: 1, query: "email:${email}") { edges { node { orders(first: 20) { edges { node { refunds(first: 1) { id } } } } } } } }`;
           const resp = await axios.post(
             `${s.shopify_url}/admin/api/2025-07/graphql.json`,
             { query: refundQuery },
@@ -124,11 +110,9 @@ export const getCustomerRefundsAcrossStores = async (
               },
             }
           );
-
           const custEdges = resp.data.data.customers.edges;
           if (custEdges.length > 0) {
-            const custNode = custEdges[0].node;
-            const refundsHere = custNode.orders.edges.some(
+            const refundsHere = custEdges[0].node.orders.edges.some(
               (o: any) => o.node.refunds.length > 0
             );
             if (refundsHere) {
@@ -136,30 +120,62 @@ export const getCustomerRefundsAcrossStores = async (
             }
           }
         } catch (err) {
-          console.error("Error checking other store:", s.shopify_url, err);
+          logger.error(`Error checking other store: ${s.shopify_url}`, err);
         }
       }
 
-      results.push({
-        id: node.id,
-        displayName: node.displayName,
-        email,
-        riskLevel,
-        totalOrders,
-        totalRefunds,
+      // STEP 2: Prepare the customer data for the database
+      const customerDataToUpsert = {
+        id: node.id, // Shopify GID (e.g., "gid://shopify/Customer/123")
+        name: node.displayName,
+        email: node.email,
+        phone: node.phone,
+        totalRefunded: String(totalRefunds),
+        totalOrders: totalOrders,
+        riskLevel: riskLevel,
         refundsFromStores: refundedStores.size,
-      });
+        storeId: storeId, // Link the customer to the current store
+        tags: Array.isArray(node.tags) ? node.tags.join(",") : "", // Join tags into a string
+      };
+
+      // STEP 3: Add the upsert operation to our array of promises
+      const promise = database
+        .insert(customers)
+        .values(customerDataToUpsert)
+        .onConflictDoUpdate({
+          target: customers.id,
+          set: {
+            // Fields to update if the customer already exists
+            name: customerDataToUpsert.name,
+            email: customerDataToUpsert.email,
+            phone: customerDataToUpsert.phone,
+            totalRefunded: customerDataToUpsert.totalRefunded,
+            totalOrders: customerDataToUpsert.totalOrders,
+            riskLevel: customerDataToUpsert.riskLevel,
+            refundsFromStores: customerDataToUpsert.refundsFromStores,
+            tags: customerDataToUpsert.tags,
+            // The storeId should not change on update
+          },
+        })
+        .returning();
+
+      upsertPromises.push(promise);
     }
 
-    res.status(status.OK).json(results);
+    const resultFinal = await Promise.all(upsertPromises);
+
+    res.status(status.OK).json({
+      message: "Customers synced successfully.",
+      data: resultFinal.flat(),
+    });
   } catch (error: any) {
-    console.error(
-      "Error fetching customer risk:",
-      error.response?.data || error
+    logger.error(
+      "Error syncing customers:",
+      error.response?.data || error.message
     );
     res
       .status(status.INTERNAL_SERVER_ERROR)
-      .json({ error: "Failed to fetch customer risk" });
+      .json({ error: "Failed to sync customers" });
   }
 };
 
@@ -173,7 +189,7 @@ export const getOrders = async (req: Request, res: Response) => {
 
     const storeUrl = data?.shopify_url;
     const accessToken = data?.shopify_access_token;
-    console.log(storeUrl, storeUrl);
+
     let order: any[] = [];
     // let hasNextPage = true;
     // let cursor: string | null = null;

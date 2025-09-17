@@ -227,6 +227,16 @@ export const getRiskyOrders = async (
         .from(orders)
         .where(eq(orders.id, ord.id));
 
+      if (existing.length > 0 && existing[0].manualFlag) {
+        if (existing[0].manualFlag === true) {
+          flagged = true;
+          reasons.push("Manually flagged");
+        } else if (existing[0].manualFlag === false) {
+          flagged = false;
+          reasons.push("Manually unflagged");
+        }
+      }
+
       if (existing.length === 0) {
         await database.insert(orders).values({
           id: ord.id,
@@ -238,6 +248,7 @@ export const getRiskyOrders = async (
           customerPhone: customerData.phone,
           riskLevel: ord.riskLevel,
           flagged,
+          manualFlag: null,
           createdAt: orderCreatedDate,
           updatedAt: new Date(),
           totalRefunded: refundsTotal.toString(), // save refunded
@@ -248,6 +259,7 @@ export const getRiskyOrders = async (
         ...ord,
         totalAmount,
         flagged,
+        manualFlag: null,
         reasons,
         refundsTotal,
       });
@@ -264,6 +276,7 @@ export const getRiskyOrders = async (
         isRisky: isNowRisky,
         riskySince: effectiveRiskySince,
         reasons: customerRiskReasons,
+        manualFlag: null,
         refundsFromStores,
         riskLevel,
       },

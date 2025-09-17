@@ -2,11 +2,15 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { database } from "../configs/connection.config";
 import * as schema from "@/schema/schema";
 import { betterAuth } from "better-auth";
-import { admin as adminPlugin } from "better-auth/plugins";
+import {
+  admin as adminPlugin,
+  createAuthMiddleware,
+} from "better-auth/plugins";
 import { env } from "@/utils/env.util";
 import { adminApprovalNotificationTemplate } from "@/utils/sendgrid.util";
 import { sendgridClient } from "@/configs/sendgrid.config";
 import { eq } from "drizzle-orm";
+import { registerWebhook } from "@/utils/webhook.util";
 
 const isProduction = process.env.NODE_ENV === "production";
 export const auth = betterAuth({
@@ -62,7 +66,6 @@ export const auth = betterAuth({
           .set({ emailVerified: true })
           .where(eq(schema.users.id, user.id));
 
-        console.log(`User ${user.email} auto-activated`);
         return;
       }
 
@@ -76,8 +79,6 @@ export const auth = betterAuth({
         user.company_registration_number || "Not Provided";
       const averageOrdersPerMonth =
         user.average_orders_per_month || "Not Provided";
-
-      console.log("This is the user", user);
 
       const msg = {
         to: env.ADMIN_EMAIL!,
@@ -103,6 +104,29 @@ export const auth = betterAuth({
     },
     // autoSignInAfterVerification: true,
     sendOnSignUp: false,
+  },
+  hooks: {
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/sign-up/email") {
+        const newUser = ctx.context.newSession?.user;
+        if (!newUser) {
+          console.log("No new user found");
+          return;
+        }
+
+        const shopUrl = newUser.shopify_url;
+        const accessToken = newUser.shopify_access_token;
+
+        if (shopUrl && accessToken) {
+          try {
+            await registerWebhook(shopUrl, accessToken);
+            console.log("Webhook registered after signup for shop:", shopUrl);
+          } catch (err) {
+            console.error("Failed registering webhook after signup:", err);
+          }
+        }
+      }
+    }),
   },
   user: {
     modelName: "users",

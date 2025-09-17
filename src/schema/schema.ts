@@ -58,7 +58,7 @@ export const users = pgTable("users", {
 });
 
 export const customers = pgTable("customers", {
-  id: uuid("id").primaryKey(),
+  id: text("id").primaryKey(),
   name: text("name"),
   email: text("email"),
   phone: text("phone"),
@@ -68,6 +68,8 @@ export const customers = pgTable("customers", {
   refundsFromStores: integer("refunds_from_stores"),
   riskySince: timestamp("risky_since"),
   storeId: foreignkeyRef("store_id", () => users.id, { onDelete: "cascade" }),
+  blocked: boolean("blocked").default(false),
+  tags: varchar("tags", { length: 255 }),
   ...timeStamps,
 });
 
@@ -87,6 +89,7 @@ export const orders = pgTable("orders", {
   trackingCompany: varchar("tracking_company", { length: 255 }),
   deliveredAt: timestamp("delivered_at"),
   disputeOpened: boolean("dispute_opened").default(false).notNull(),
+  manualFlag: boolean("manual_flag").default(false),
   flagged: boolean("flagged").default(false),
   flagReason: text("flag_reason"),
   riskLevel: varchar("risk_level", { length: 50 }),
