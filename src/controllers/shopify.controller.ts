@@ -80,8 +80,9 @@ export const getCustomerRefundsAcrossStores = async (
     );
 
     const customerEdges = response.data.data.customers.edges;
-    // const testingpurpose = response.data.data;
-    // console.log("testingpurpose", testingpurpose);
+    const testingpurpose = response.data.data;
+    console.log("testingpurpose", testingpurpose.customers.edges);
+    console.log("hahahah", testingpurpose.webhookSubscriptions.edges);
 
     const otherStores = await database
       .select()

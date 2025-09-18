@@ -20,7 +20,7 @@ export async function registerWebhook(shopUrl: string, accessToken: string) {
 
   const variables = {
     topic: "ORDERS_CREATE",
-    callbackUrl: `${env.FRONTEND_DOMAIN}/api/webhook/orders/create`,
+    callbackUrl: `${env.BACKEND_DOMAIN}/api/webhook/orders/create`,
   };
 
   const response = await axios.post(
