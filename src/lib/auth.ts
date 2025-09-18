@@ -5,18 +5,24 @@ import { betterAuth } from "better-auth";
 import {
   admin as adminPlugin,
   createAuthMiddleware,
+  emailOTP,
 } from "better-auth/plugins";
 import { env } from "@/utils/env.util";
-import { adminApprovalNotificationTemplate } from "@/utils/sendgrid.util";
+import {
+  adminApprovalNotificationTemplate,
+  staffInvitationTemplate,
+} from "@/utils/sendgrid.util";
 import { sendgridClient } from "@/configs/sendgrid.config";
 import { eq } from "drizzle-orm";
 import { registerWebhook } from "@/utils/webhook.util";
+import { ac, manager, support, admin } from "./permission";
 
 const isProduction = process.env.NODE_ENV === "production";
 export const auth = betterAuth({
   database: drizzleAdapter(database, { provider: "pg", schema }),
   secret: env.COOKIE_SECRET,
   trustedOrigins: [env.FRONTEND_DOMAIN],
+
   session: {
     expiresIn: 60 * 60 * 24 * 7,
     updateAge: 60 * 60 * 24, // 1 day( "expiresIn = now + expiry" after every updateAge time, if session is used )
@@ -25,6 +31,7 @@ export const auth = betterAuth({
       maxAge: 5 * 60, // 5 minutes
     },
   },
+
   advanced: {
     useSecureCookies: isProduction, // required for HTTPS domains
     cookies: {
@@ -37,8 +44,46 @@ export const auth = betterAuth({
       },
     },
   },
-  // signup/signin/reset-password
-  plugins: [adminPlugin()],
+
+  plugins: [
+    adminPlugin({
+      ac,
+      roles: {
+        admin,
+        manager,
+        support,
+      },
+    }),
+    emailOTP({
+      async sendVerificationOTP({ email, otp }) {
+        try {
+          const msg = {
+            to: email,
+            from: {
+              email: env.SENDGRID_SENDER_EMAIL!,
+              name: env.SENDGRID_SENDER_NAME!,
+            },
+            subject: "Welcome! Please Verify Your Email",
+            html: staffInvitationTemplate({
+              staffName: email.split("@")[0], // or actual name from DB/form
+              staffEmail: email,
+              role: "Support", // or dynamic role
+              invitationLink: `${env.FRONTEND_DOMAIN}/accept-invite?email=${email}&otp=${otp}`, // generate a proper link
+              companyName: "eComProtect",
+            }),
+            replyTo: env.SENDGRID_SENDER_EMAIL!,
+          };
+
+          await sendgridClient.send(msg);
+          console.log("Successfully sent verification email via SendGrid.");
+        } catch (error) {
+          console.error("Failed to send verification email:", error);
+          throw new Error("Failed to send verification email.");
+        }
+      },
+    }),
+  ],
+
   emailAndPassword: {
     sendResetPassword: async () => {
       // Send reset password email
@@ -50,6 +95,7 @@ export const auth = betterAuth({
 
     enabled: true,
   },
+
   emailVerification: {
     sendVerificationEmail: async ({
       user,
@@ -105,6 +151,7 @@ export const auth = betterAuth({
     // autoSignInAfterVerification: true,
     sendOnSignUp: false,
   },
+
   hooks: {
     after: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/sign-up/email") {
@@ -128,6 +175,7 @@ export const auth = betterAuth({
       }
     }),
   },
+
   user: {
     modelName: "users",
     additionalFields: {
