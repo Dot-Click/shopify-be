@@ -10,7 +10,7 @@ export const ordersCreateWebhook = async (
 ): Promise<void> => {
   try {
     const order = req.body;
-    console.log("🚀 New order received:", order.id);
+    console.log("🚀 New order received:", order);
 
     const customerEmail = order.customer?.email;
     const customerId = order.customer?.id;
@@ -35,12 +35,13 @@ export const ordersCreateWebhook = async (
 
     const storeUrl = store[0].shopify_url;
     const storeAccessToken = store[0].shopify_access_token;
-
+    console.log("store URL:-", storeUrl);
+    console.log("Store Access Token:-", storeAccessToken);
     if (customerRecord?.tags?.includes("BLOCKED")) {
       console.log(`⚠️ Blocked customer tried ordering: ${customerEmail}`);
 
       // ❌ Cancel order via Shopify API
-      await axios.post(
+      const response = await axios.post(
         `${storeUrl}/admin/api/2025-07/orders/${order.id}/cancel.json`,
         {},
         {
@@ -50,6 +51,8 @@ export const ordersCreateWebhook = async (
           },
         }
       );
+
+      console.log("This is response:-", response.data);
     }
 
     res.status(200).send("✅ Webhook processed");
