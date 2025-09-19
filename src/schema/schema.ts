@@ -7,6 +7,7 @@ import {
   timestamp,
   numeric,
   ReferenceConfig,
+  json,
 } from "drizzle-orm/pg-core";
 // import { createInsertSchema } from "drizzle-zod";
 import { createId } from "@paralleldrive/cuid2";
@@ -163,9 +164,37 @@ export const settings = pgTable("settings", {
   ...timeStamps,
 });
 
-export const settingsRelations = relations(settings, ({ many }) => ({
-  settings: many(settings),
-}));
+// export const settingsRelations = relations(settings, ({ many }) => ({
+//   settings: many(settings),
+// }));
+
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey(),
+  storeId: uuid("store_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+
+  customerId: uuid("customer_id").references(() => customers.id, {
+    onDelete: "set null",
+  }),
+
+  type: text("type").notNull(),
+  // e.g. "HIGH_RISK_ORDER", "REFUND_THRESHOLD_EXCEEDED"
+
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+
+  meta: json("meta").$type<{
+    orderId?: string;
+    orderName?: string;
+    reasons?: string[];
+    totalAmount?: string;
+    currency?: string;
+  }>(),
+
+  read: boolean("read").default(false),
+  ...timestamp,
+});
 
 export const session = pgTable("session", {
   id: text("id").primaryKey(),

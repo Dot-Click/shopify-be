@@ -331,3 +331,132 @@ export const resetPasswordTemplate = ({
 </html>
   `;
 };
+
+export const highRiskOrderNotificationTemplate = ({
+  adminName,
+  orderName,
+  customerEmail,
+  riskReasons,
+  orderLink,
+}: {
+  adminName: string;
+  orderName: string;
+  customerEmail: string;
+  riskReasons: string[];
+  orderLink: string;
+}) => {
+  const primaryColor = "#D32F2F";
+  const accentColor = "#FFC107";
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background-color: ${primaryColor};
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .content {
+            padding: 30px;
+            color: #333333;
+            line-height: 1.6;
+        }
+        .content h2 {
+            color: ${primaryColor};
+        }
+        .order-details {
+            background-color: #fff9c4; /* Light yellow background */
+            border-left: 4px solid ${accentColor};
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .order-details p {
+            margin: 5px 0;
+            font-size: 16px;
+        }
+        .reasons-list {
+            list-style-type: disc;
+            padding-left: 20px;
+            margin-top: 10px;
+        }
+        .reasons-list li {
+            margin-bottom: 5px;
+        }
+        .button-container {
+            text-align: center;
+            margin-top: 30px;
+        }
+        .button {
+            background-color: #255BE9; /* Using the original primary blue for the button */
+            color: #ffffff;
+            padding: 12px 25px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #888888;
+            background-color: #f4f4f4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>High-Risk Order Alert</h1>
+        </div>
+        <div class="content">
+            <h2>Hello ${adminName},</h2>
+            <p>A new order has been automatically flagged as high-risk and requires your immediate attention.</p>
+            
+            <div class="order-details">
+                <p><strong>Order Number:</strong> ${orderName}</p>
+                <p><strong>Customer Email:</strong> ${customerEmail}</p>
+            </div>
+
+            <p><strong>Reason(s) for Flagging:</strong></p>
+            <ul class="reasons-list">
+                ${riskReasons.map((reason) => `<li>${reason}</li>`).join("")}
+            </ul>
+
+            <p>Please review the order details promptly to determine the appropriate action (e.g., fulfill, contact customer, or cancel).</p>
+
+            <div class="button-container">
+                <a href="${orderLink}" class="button">Review Order Now</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p>© ${new Date().getFullYear()} eComProducts. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
+  `;
+};

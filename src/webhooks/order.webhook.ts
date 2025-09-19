@@ -3,6 +3,10 @@ import axios from "axios";
 import { database } from "@/configs/connection.config";
 import { customers, users } from "@/schema/schema";
 import { eq } from "drizzle-orm";
+import { calculateRisk } from "@/service/risk.service";
+import { highRiskOrderNotificationTemplate } from "@/utils/sendgrid.util";
+import { env } from "@/utils/env.util";
+import { sendgridClient } from "@/configs/sendgrid.config";
 
 export const ordersCreateWebhook = async (
   req: Request,
@@ -10,8 +14,6 @@ export const ordersCreateWebhook = async (
 ): Promise<void> => {
   try {
     const order = req.body;
-    console.log("🚀 New order received:", order.id);
-
     const customerEmail = order.customer?.email;
     const customerId = order.customer?.id;
 
@@ -20,39 +22,71 @@ export const ordersCreateWebhook = async (
       return;
     }
 
-    // 🔎 Check if blocked in your DB
     const [customerRecord] = await database
       .select()
       .from(customers)
       .where(eq(customers.email, customerEmail));
 
     const storeId = customerRecord.storeId;
-
-    const store = await database
+    const [store] = await database
       .select()
       .from(users)
       .where(eq(users.id, storeId as string));
 
-    const storeUrl = store[0].shopify_url;
-    const storeAccessToken = store[0].shopify_access_token;
+    const storeUrl = store.shopify_url;
+    const storeAccessToken = store.shopify_access_token;
 
     if (customerRecord?.tags?.includes("BLOCKED")) {
-      console.log(`⚠️ Blocked customer tried ordering: ${customerEmail}`);
-
-      // ❌ Cancel order via Shopify API
       await axios.post(
         `${storeUrl}/admin/api/2025-07/orders/${order.id}/cancel.json`,
         {},
         {
           headers: {
-            "X-Shopify-Access-Token": storeAccessToken!,
+            "X-Shopify-Access-Token": storeAccessToken,
             "Content-Type": "application/json",
           },
         }
       );
+      res.status(200).send("❌ Order cancelled (blocked)");
+      return;
     }
 
-    res.status(200).send("✅ Webhook processed");
+    const riskResult = await calculateRisk(
+      storeId as string,
+      customerId,
+      order
+    );
+
+    const highRiskOrder = riskResult.flaggedOrders.find(
+      (o) => o.flagged && o.reasons.includes("Shopify flagged HIGH risk")
+    );
+
+    console.log("THEEEE", highRiskOrder);
+
+    if (highRiskOrder) {
+      const msg = {
+        to: store.email,
+        from: {
+          email: env.SENDGRID_SENDER_EMAIL!,
+          name: env.SENDGRID_SENDER_NAME!,
+        },
+        subject: `High-Risk Order Alert: ${order.name}`,
+        html: highRiskOrderNotificationTemplate({
+          adminName: store.name || "Admin",
+          orderName: order.name,
+          customerEmail,
+          riskReasons: highRiskOrder.reasons,
+          orderLink: `${storeUrl}/admin/orders/${order.id}`,
+        }),
+        replyTo: env.SENDGRID_SENDER_EMAIL!,
+      };
+
+      await sendgridClient.send(msg);
+
+      console.log("High-risk order email sent!");
+    }
+
+    res.status(200).send("✅ Webhook processed with risk check");
   } catch (error: any) {
     console.error("Webhook error:", error.response?.data || error);
     res.status(500).send("❌ Error processing webhook");
