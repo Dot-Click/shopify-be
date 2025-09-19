@@ -11,8 +11,8 @@ export const calculateRiskyOrders = async ({
 }: {
   storeId: string;
   customerId: string;
-  storeUrl: string;
-  accessToken: string;
+  storeUrl?: string;
+  accessToken?: string;
 }) => {
   // ---- Load settings ----
   const [setting] = await database

@@ -3,7 +3,7 @@ import axios from "axios";
 import { database } from "@/configs/connection.config";
 import { customers, users } from "@/schema/schema";
 import { eq } from "drizzle-orm";
-import { calculateRisk } from "@/service/risk.service";
+import { calculateRiskyOrders } from "@/service/risk.service";
 import { highRiskOrderNotificationTemplate } from "@/utils/sendgrid.util";
 import { env } from "@/utils/env.util";
 import { sendgridClient } from "@/configs/sendgrid.config";
@@ -51,13 +51,12 @@ export const ordersCreateWebhook = async (
       return;
     }
 
-    const riskResult = await calculateRisk(
-      storeId as string,
-      customerId,
-      order
-    );
+    const riskResult = await calculateRiskyOrders({
+      storeId: storeId as string,
+      customerId: customerId as string,
+    });
 
-    const highRiskOrder = riskResult.flaggedOrders.find(
+    const highRiskOrder = riskResult.orders.find(
       (o) => o.flagged && o.reasons.includes("Shopify flagged HIGH risk")
     );
 
