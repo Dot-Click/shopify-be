@@ -13,6 +13,7 @@ export const createSettings = async (
 
     if (!storeId) {
       res.status(status.BAD_REQUEST).json({ message: "Store ID is required" });
+      return;
     }
 
     const {

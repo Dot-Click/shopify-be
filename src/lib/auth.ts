@@ -10,6 +10,7 @@ import {
 import { env } from "@/utils/env.util";
 import {
   adminApprovalNotificationTemplate,
+  resetPasswordTemplate,
   staffInvitationTemplate,
 } from "@/utils/sendgrid.util";
 import { sendgridClient } from "@/configs/sendgrid.config";
@@ -85,8 +86,32 @@ export const auth = betterAuth({
   ],
 
   emailAndPassword: {
-    sendResetPassword: async () => {
-      // Send reset password email
+    sendResetPassword: async ({ token, user }: any) => {
+      try {
+        const resetLink = `${env.FRONTEND_DOMAIN}/reset-password?token=${token}`;
+
+        console.log(user);
+        const msg = {
+          to: user.email,
+          from: {
+            email: env.SENDGRID_SENDER_EMAIL!,
+            name: env.SENDGRID_SENDER_NAME!,
+          },
+          subject: "Your Password Reset Request",
+          html: resetPasswordTemplate({
+            resetLink: resetLink,
+            userName:
+              user.name || (user.email ? user.email.split("@")[0] : "user"),
+          }),
+          replyTo: env.SENDGRID_SENDER_EMAIL!,
+        };
+
+        await sendgridClient.send(msg);
+        console.log("Successfully sent password reset email via SendGrid.");
+      } catch (error) {
+        console.error("Failed to send password reset email:", error);
+        throw new Error("Failed to send password reset email.");
+      }
     },
     // requireEmailVerification: true,
     // maxPasswordLength: 10,

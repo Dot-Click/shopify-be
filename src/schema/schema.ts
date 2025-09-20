@@ -66,6 +66,7 @@ export const customers = pgTable("customers", {
   totalRefunded: numeric("total_refunded", { precision: 12, scale: 2 }),
   totalOrders: integer("total_orders"),
   riskLevel: integer("risk_level"),
+  flagged: boolean("flagged"),
   refundsFromStores: integer("refunds_from_stores"),
   riskySince: timestamp("risky_since"),
   storeId: foreignkeyRef("store_id", () => users.id, { onDelete: "cascade" }),
@@ -156,9 +157,11 @@ export const orderItemsRelations = relations(orderItems, ({ one }) => ({
 // *This is the schema of settings
 export const settings = pgTable("settings", {
   id: uuid("id").primaryKey(),
-  storeId: foreignkeyRef("store_id", () => users.id, { onDelete: "cascade" }),
-  lostParcelThreshold: integer("lost_parcel_threshold"),
-  lostParcelPeriod: integer("lost_parcel_period"),
+  storeId: foreignkeyRef("store_id", () => users.id, {
+    onDelete: "cascade",
+  }).notNull(),
+  lostParcelThreshold: integer("lost_parcel_threshold").notNull(),
+  lostParcelPeriod: integer("lost_parcel_period").notNull(),
   lossRateThreshold: integer("loss_rate_threshold"),
   matchSensitivity: text("match_sensitivity"),
   ...timeStamps,
@@ -173,17 +176,12 @@ export const notifications = pgTable("notifications", {
   storeId: uuid("store_id")
     .references(() => users.id, { onDelete: "cascade" })
     .notNull(),
-
   customerId: uuid("customer_id").references(() => customers.id, {
     onDelete: "set null",
   }),
-
   type: text("type").notNull(),
-  // e.g. "HIGH_RISK_ORDER", "REFUND_THRESHOLD_EXCEEDED"
-
   title: text("title").notNull(),
   message: text("message").notNull(),
-
   meta: json("meta").$type<{
     orderId?: string;
     orderName?: string;
@@ -191,7 +189,6 @@ export const notifications = pgTable("notifications", {
     totalAmount?: string;
     currency?: string;
   }>(),
-
   read: boolean("read").default(false),
   ...timestamp,
 });
