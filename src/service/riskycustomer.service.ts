@@ -1,4 +1,3 @@
-// Place this function in a utility file or at the top of your controller
 interface RiskSettings {
   createdAt: Date | null;
   updatedAt: Date | null;
@@ -54,9 +53,6 @@ export const calculateCustomerRisk = (
     return { isFlagged: false, riskLevel: "Low", riskReason: "No orders." };
   }
 
-  // --- Step 2: Optional Rate-Based Threshold (The Premium Feature) ---
-  // This is the crucial part. If the user is not subscribed, lossRateThreshold will be null,
-  // and this entire 'if' block will be skipped.
   if (typeof lossRateThreshold === "number") {
     const ordersWithRefunds = customer.orders.edges.filter(
       (order) => order.node.refunds.length > 0
@@ -87,11 +83,6 @@ export const calculateCustomerRisk = (
     };
   }
 
-  // --- Step 3: Final Default Return ---
-  // If the code reaches this point, it means:
-  // 1. The customer passed the time-based check.
-  // 2. The lossRateThreshold was 'null' (because the user is not subscribed).
-  // Therefore, the customer is considered low risk.
   return {
     isFlagged: false,
     riskLevel: "Low",
