@@ -12,6 +12,7 @@ import {
   adminApprovalNotificationTemplate,
   resetPasswordTemplate,
   staffInvitationTemplate,
+  storeInvitationAcceptedTemplate,
 } from "@/utils/sendgrid.util";
 import { sendgridClient } from "@/configs/sendgrid.config";
 import { eq } from "drizzle-orm";
@@ -58,25 +59,49 @@ export const auth = betterAuth({
     emailOTP({
       async sendVerificationOTP({ email, otp }) {
         try {
+          const user = await database.query.users.findFirst({
+            where: eq(schema.users.email, email),
+          });
+
+          let emailSubject = "";
+          let emailHtml = "";
+          let userName = email.split("@")[0];
+
+          if (user && user.role === "sub-admin") {
+            emailSubject = "Welcome! Please Verify Your Store's Email";
+            userName = user.name || userName; // Use their actual name if available
+            emailHtml = storeInvitationAcceptedTemplate({
+              staffName: userName,
+              staffEmail: email,
+              dashboardLink: `${env.FRONTEND_DOMAIN}/verify-store?email=${email}&otp=${otp}`,
+              companyName: "eComProtect",
+            });
+          } else {
+            emailSubject = "You're Invited to Join Your Team!";
+            emailHtml = staffInvitationTemplate({
+              staffName: userName,
+              staffEmail: email,
+              invitationLink: `${env.FRONTEND_DOMAIN}/accept-invite?email=${email}&otp=${otp}`,
+              companyName: "eComProtect", // You could even make this dynamic by looking up the store they belong to
+            });
+          }
+
+          // --- Step 3: Construct and send the email ---
           const msg = {
             to: email,
             from: {
               email: env.SENDGRID_SENDER_EMAIL!,
               name: env.SENDGRID_SENDER_NAME!,
             },
-            subject: "Welcome! Please Verify Your Email",
-            html: staffInvitationTemplate({
-              staffName: email.split("@")[0], // or actual name from DB/form
-              staffEmail: email,
-              role: "Support", // or dynamic role
-              invitationLink: `${env.FRONTEND_DOMAIN}/accept-invite?email=${email}&otp=${otp}`, // generate a proper link
-              companyName: "eComProtect",
-            }),
+            subject: emailSubject, // Use the dynamic subject
+            html: emailHtml, // Use the dynamic HTML template
             replyTo: env.SENDGRID_SENDER_EMAIL!,
           };
 
           await sendgridClient.send(msg);
-          console.log("Successfully sent verification email via SendGrid.");
+          console.log(
+            `Successfully sent '${emailSubject}' email to ${email} via SendGrid.`
+          );
         } catch (error) {
           console.error("Failed to send verification email:", error);
           throw new Error("Failed to send verification email.");

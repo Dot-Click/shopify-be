@@ -44,7 +44,7 @@ export const users = pgTable("users", {
     .$defaultFn(() => /* @__PURE__ */ new Date())
     .notNull(),
   role: text("role"),
-  banned: boolean("banned"),
+  banned: boolean("banned").default(false),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires"),
   company_name: text("company_name"),
@@ -71,6 +71,7 @@ export const customers = pgTable("customers", {
   riskySince: timestamp("risky_since"),
   storeId: foreignkeyRef("store_id", () => users.id, { onDelete: "cascade" }),
   blocked: boolean("blocked").default(false),
+  ip: varchar("ip"),
   tags: varchar("tags", { length: 255 }),
   ...timeStamps,
 });

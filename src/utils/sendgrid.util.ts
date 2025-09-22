@@ -137,13 +137,11 @@ export const adminApprovalNotificationTemplate = ({
 export const staffInvitationTemplate = ({
   staffName,
   staffEmail,
-  role,
   invitationLink,
   companyName,
 }: {
   staffName: string;
   staffEmail: string;
-  role: string;
   invitationLink: string;
   companyName: string;
 }) => {
@@ -227,10 +225,9 @@ export const staffInvitationTemplate = ({
       
       <div class="details">
         <p><strong>Email:</strong> ${staffEmail}</p>
-        <p><strong>Role:</strong> ${role}</p>
       </div>
 
-      <p>You can set your password and complete your profile by clicking the button below:</p>
+      <p>You can complete your profile process by clicking the button below:</p>
      
       <div class="button-container">
         <a href="${invitationLink}" class="button">Accept Invitation</a>
@@ -238,6 +235,119 @@ export const staffInvitationTemplate = ({
 
       <p style="margin-top: 20px; font-size: 14px; color: #555;">
         If you weren’t expecting this invitation, you can safely ignore this email.
+      </p>
+    </div>
+    <div class="footer">
+      <p>© ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+};
+
+export const storeInvitationAcceptedTemplate = ({
+  staffName,
+  staffEmail,
+  companyName,
+  dashboardLink,
+}: {
+  staffName: string;
+  staffEmail: string;
+  companyName: string;
+  dashboardLink: string;
+}) => {
+  const primaryColor = "#255BE9";
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f4f4f4;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      color: #333333;
+    }
+    .container {
+      width: 100%;
+      max-width: 600px;
+      margin: 20px auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .header {
+      background-color: ${primaryColor};
+      color: #ffffff;
+      padding: 20px;
+      text-align: center;
+    }
+    .content {
+      padding: 30px;
+      line-height: 1.6;
+    }
+    .content h2 {
+      color: ${primaryColor};
+    }
+    .details {
+      background-color: #f9f9f9;
+      border-left: 4px solid ${primaryColor};
+      padding: 15px;
+      margin: 20px 0;
+    }
+    .details p {
+      margin: 5px 0;
+    }
+    .button-container {
+      text-align: center;
+      margin-top: 30px;
+    }
+    .button {
+      background-color: ${primaryColor};
+      color: #ffffff !important;
+      padding: 12px 25px;
+      text-decoration: none;
+      border-radius: 5px;
+      font-weight: bold;
+      display: inline-block;
+    }
+    .footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 12px;
+      color: #888888;
+      background-color: #f4f4f4;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Invitation Accepted 🎉</h1>
+    </div>
+    <div class="content">
+      <h2>Hello ${staffName},</h2>
+      <p>Great news! You have successfully accepted the invitation to join <strong>${companyName}</strong>.</p>
+      
+      <div class="details">
+        <p><strong>Email:</strong> ${staffEmail}</p>
+        <p><strong>Role:</strong> Store Staff</p>
+      </div>
+
+      <p>You can now access the store dashboard and start managing orders, customers, and more.</p>
+     
+      <div class="button-container">
+        <a href="${dashboardLink}" class="button">Go to Dashboard</a>
+      </div>
+
+      <p style="margin-top: 20px; font-size: 14px; color: #555;">
+        If you didn’t mean to accept this invitation, please contact the store admin.
       </p>
     </div>
     <div class="footer">

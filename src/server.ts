@@ -20,9 +20,10 @@ import morgan from "morgan";
 import helmet from "helmet";
 import paymentRouter from "./routes/payment.route";
 import userRouter from "./routes/user.route";
-import shopifyRouter from "./routes/shopify.route";
 import settingsRouter from "./routes/settings.route";
 import webhookRouter from "./routes/webhook.route";
+import customerRouter from "./routes/customer.route";
+import orderRouter from "./routes/order.route";
 
 config();
 const app = express();
@@ -59,7 +60,8 @@ app.use(throttle("default"));
 app.use(express.json());
 app.use("/api/payment", paymentRouter);
 app.use("/api/user", userRouter);
-app.use("/api/shopify", shopifyRouter);
+app.use("/api/order", orderRouter);
+app.use("/api/customer", customerRouter);
 app.use("/api/settings", settingsRouter);
 app.use("/api/webhook", webhookRouter);
 
