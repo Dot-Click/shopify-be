@@ -8,6 +8,8 @@ export const refundsCreateWebhook = async (req: Request, res: Response) => {
     const refund = req.body; // Shopify sends refund + order details here
     const orderId = `gid://shopify/Order/${refund.order_id}`;
 
+    console.log("order id, from Refunds:", orderId);
+
     // Fetch order & customer
     const [orderRecord] = await database
       .select()

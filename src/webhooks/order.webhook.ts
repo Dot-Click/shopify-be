@@ -27,6 +27,10 @@ export const ordersCreateWebhook = async (
       .from(customers)
       .where(eq(customers.email, customerEmail));
 
+    if (!customerRecord) {
+      console.error("No matching customer in DB for email:", customerEmail);
+      res.status(404).send("Customer record not found");
+    }
     const storeId = customerRecord.storeId;
 
     console.log("Store ID:", storeId);
