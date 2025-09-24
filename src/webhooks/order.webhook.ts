@@ -28,6 +28,9 @@ export const ordersCreateWebhook = async (
       .where(eq(customers.email, customerEmail));
 
     const storeId = customerRecord.storeId;
+
+    console.log("Store ID:", storeId);
+
     const [store] = await database
       .select()
       .from(users)
