@@ -58,6 +58,8 @@ export const ordersCreateWebhook = async (
     const riskResult = await calculateRiskyOrders({
       storeId: storeId as string,
       customerId: customerId as string,
+      storeUrl: storeUrl as string,
+      accessToken: storeAccessToken as string,
     });
 
     const highRiskOrder = riskResult.orders.find(
