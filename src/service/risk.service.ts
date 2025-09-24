@@ -30,8 +30,6 @@ export const calculateRiskyOrders = async ({
     .from(customers)
     .where(eq(customers.id, customerId));
 
-  console.log("Risk servce - Customer Record:", customerRecord);
-
   if (!customerRecord) throw new Error("Customer not found");
 
   const { totalOrders, totalRefunded, riskySince, email, phone, riskLevel } =
@@ -145,7 +143,7 @@ export const calculateRiskyOrders = async ({
     throw new Error("Failed to fetch customer orders from Shopify");
 
   const shopifyOrders = customerData.orders.edges.map((edge: any) => edge.node);
-
+  console.log("shopifyOrders:", shopifyOrders);
   const orderResults: any[] = [];
 
   for (const ord of shopifyOrders) {

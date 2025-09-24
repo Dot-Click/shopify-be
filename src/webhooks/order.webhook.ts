@@ -62,6 +62,9 @@ export const ordersCreateWebhook = async (
       accessToken: storeAccessToken as string,
     });
 
+    console.log("riskResult:", riskResult);
+    console.log("order result:", riskResult.orders);
+
     const highRiskOrder = riskResult.orders.find(
       (o) => o.flagged && o.reasons.includes("Shopify flagged HIGH risk")
     );
