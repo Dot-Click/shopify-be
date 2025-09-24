@@ -30,6 +30,8 @@ export const calculateRiskyOrders = async ({
     .from(customers)
     .where(eq(customers.id, customerId));
 
+  console.log("Risk servce - Customer Record:", customerRecord);
+
   if (!customerRecord) throw new Error("Customer not found");
 
   const { totalOrders, totalRefunded, riskySince, email, phone, riskLevel } =

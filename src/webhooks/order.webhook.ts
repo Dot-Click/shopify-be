@@ -51,6 +51,8 @@ export const ordersCreateWebhook = async (
       return;
     }
 
+    console.log("Customer ID:", customerId)
+
     const riskResult = await calculateRiskyOrders({
       storeId: storeId as string,
       customerId: customerId as string,
