@@ -16,7 +16,10 @@ import {
 } from "@/utils/sendgrid.util";
 import { sendgridClient } from "@/configs/sendgrid.config";
 import { eq } from "drizzle-orm";
-import { registerWebhook } from "@/utils/webhook.util";
+import {
+  registerOrderWebhook,
+  registerRefundWebhook,
+} from "@/utils/webhook.util";
 import { ac, manager, support, admin } from "./permission";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -216,7 +219,8 @@ export const auth = betterAuth({
 
         if (shopUrl && accessToken) {
           try {
-            await registerWebhook(shopUrl, accessToken);
+            await registerOrderWebhook(shopUrl, accessToken);
+            await registerRefundWebhook(shopUrl, accessToken);
             console.log("Webhook registered after signup for shop:", shopUrl);
           } catch (err) {
             console.error("Failed registering webhook after signup:", err);
