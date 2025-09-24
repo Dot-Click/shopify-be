@@ -97,7 +97,7 @@ export const getCustomerRefundsAcrossStores = async (
       if (node.orders.edges.length > 0) {
         const mostRecentOrder = node.orders.edges[0].node;
         const orderId = mostRecentOrder.legacyResourceId;
-        console.log("mostRecentOrder", mostRecentOrder);
+
         try {
           const orderDetailsResp = await axios.get(
             `${storeUrl}/admin/api/2025-07/orders/${orderId}.json?fields=browser_ip`,
@@ -117,7 +117,6 @@ export const getCustomerRefundsAcrossStores = async (
       }
       const refundedStores = new Set<string>();
 
-      console.log("ORDER IDs:-", lastKnownIp);
       const customerDataToUpsert = {
         id: node.id,
         name: node.displayName ?? "N/A",
@@ -149,6 +148,7 @@ export const getCustomerRefundsAcrossStores = async (
     }
 
     const resultFinal = await Promise.all(upsertPromises);
+
     res.status(status.OK).json({
       message: "Customers synced successfully.",
       data: resultFinal.flat(),

@@ -30,6 +30,8 @@ export const calculateRiskyOrders = async ({
     .from(customers)
     .where(eq(customers.id, customerId));
 
+  console.log("Customer Record", customerRecord);
+
   if (!customerRecord) throw new Error("Customer not found");
 
   const { totalOrders, totalRefunded, riskySince, email, phone, riskLevel } =
@@ -75,7 +77,8 @@ export const calculateRiskyOrders = async ({
   let effectiveRiskySince = riskySince;
 
   if (isNowRisky && !riskySince) {
-    effectiveRiskySince = new Date();
+    const now = new Date();
+    effectiveRiskySince = now;
     await database
       .update(customers)
       .set({ riskySince: effectiveRiskySince })
@@ -90,7 +93,7 @@ export const calculateRiskyOrders = async ({
         displayName
         email
         phone
-        orders(first: 10) {
+        orders(first: 100) {
           edges {
             node {
               id
@@ -147,25 +150,32 @@ export const calculateRiskyOrders = async ({
   const orderResults: any[] = [];
 
   for (const ord of shopifyOrders) {
-    const orderCreatedDate = new Date(ord.createdAt);
-
     let flagged = false;
     const reasons: string[] = [];
 
-    // Only flag if customer is risky AND order created after riskySince
+    let riskySinceDate: number | null = null;
+
+    if (effectiveRiskySince) {
+      riskySinceDate = new Date(effectiveRiskySince).getTime();
+    }
+
+    const orderCreatedDate = new Date(ord.createdAt).getTime();
+    const orderCreatedDateVal = new Date(ord.createdAt);
+    const isRiskyCustomer = isNowRisky || !!effectiveRiskySince;
+
     if (
-      isNowRisky &&
-      effectiveRiskySince &&
-      orderCreatedDate > effectiveRiskySince
+      isRiskyCustomer &&
+      riskySinceDate !== null &&
+      orderCreatedDate >= riskySinceDate
     ) {
       flagged = true;
-      reasons.push("Order placed after customer became risky");
+      reasons.push("Customer became risky before this order");
     }
 
     let refundsTotal = 0;
-    if (ord.refunds && ord.refunds.nodes && ord.refunds.nodes.length > 0) {
-      refundsTotal = ord.refunds.nodes.reduce((sum: number, r: any) => {
-        const amt = Number(r.totalSet.shopMoney.amount);
+    if (ord.refunds && Array.isArray(ord.refunds) && ord.refunds.length > 0) {
+      refundsTotal = ord.refunds.reduce((sum: number, r: any) => {
+        const amt = Number(r.totalRefundedSet?.shopMoney?.amount || 0);
         return sum + (isNaN(amt) ? 0 : amt);
       }, 0);
     }
@@ -175,11 +185,6 @@ export const calculateRiskyOrders = async ({
     if (refundsTotal >= totalAmount) {
       flagged = true;
       reasons.push("Order fully refunded");
-    }
-
-    if (ord.riskLevel === "HIGH") {
-      flagged = true;
-      reasons.push("Shopify risk level HIGH");
     }
 
     if (ord.fulfillmentOrders && ord.fulfillmentOrders.nodes) {
@@ -223,7 +228,7 @@ export const calculateRiskyOrders = async ({
         riskLevel: ord.riskLevel,
         flagged,
         manualFlag: null,
-        createdAt: orderCreatedDate,
+        createdAt: orderCreatedDateVal,
         updatedAt: new Date(),
         totalRefunded: refundsTotal.toString(),
       });
