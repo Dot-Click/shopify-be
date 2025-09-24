@@ -15,7 +15,9 @@ export const ordersCreateWebhook = async (
   try {
     const order = req.body;
     const customerEmail = order.customer?.email;
-    const customerId = order.customer?.id;
+    const customerId = `gid://shopify/Customer/${order.customer?.id}`;
+
+    console.log("order webhook body:", order.customer);
 
     if (!customerEmail || !customerId) {
       res.status(400).send("Missing customer info");
@@ -51,7 +53,7 @@ export const ordersCreateWebhook = async (
       return;
     }
 
-    console.log("Customer ID:", customerId)
+    console.log("Customer ID:", customerId);
 
     const riskResult = await calculateRiskyOrders({
       storeId: storeId as string,
