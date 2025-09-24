@@ -191,7 +191,7 @@ export const notifications = pgTable("notifications", {
     currency?: string;
   }>(),
   read: boolean("read").default(false),
-  ...timestamp,
+  ...timeStamps,
 });
 
 export const session = pgTable("session", {
