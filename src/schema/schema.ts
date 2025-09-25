@@ -67,6 +67,7 @@ export const customers = pgTable("customers", {
   totalOrders: integer("total_orders"),
   riskLevel: integer("risk_level"),
   flagged: boolean("flagged"),
+  riskReason: varchar("risk_reason"),
   refundsFromStores: integer("refunds_from_stores"),
   riskySince: timestamp("risky_since"),
   storeId: foreignkeyRef("store_id", () => users.id, { onDelete: "cascade" }),

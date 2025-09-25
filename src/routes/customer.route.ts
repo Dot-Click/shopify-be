@@ -6,6 +6,9 @@ import { getCustomerRefundsAcrossStores } from "@/controllers/customer/getcustom
 import { getCustomersForAdminDashboard } from "@/controllers/customer/getcustomersforadmin.controller";
 import { getRepeatedOffenders } from "@/controllers/customer/getrepeatedoffenders.controller";
 import { getTopRiskyIPs } from "@/controllers/customer/getriskyips.controller";
+import { getTopFlaggedReasons } from "@/controllers/customer/topflaggedreason.controller";
+import { getMonthlyRiskIncidents } from "@/controllers/customer/riskincidents.controller";
+import { getRiskChartData } from "@/controllers/customer/getaffectedincidents.controller";
 
 const customerRouter = Router();
 
@@ -20,5 +23,12 @@ customerRouter.get(
 
 customerRouter.get("/repeated-offenders", protectRoute, getRepeatedOffenders);
 customerRouter.get("/top-risky-ips", protectRoute, getTopRiskyIPs);
+customerRouter.get("/top-flagged-reason", protectRoute, getTopFlaggedReasons);
+customerRouter.get(
+  "/monthly-risk-incidents",
+  protectRoute,
+  getMonthlyRiskIncidents
+);
+customerRouter.get("/risk-chart-data", protectRoute, getRiskChartData);
 
 export default customerRouter;

@@ -1,7 +1,7 @@
 import status from "http-status";
 import { Request, Response } from "express";
 import { customers, settings } from "@/schema/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { database } from "@/configs/connection.config";
 import axios from "axios";
 import { logger } from "@/utils/logger.util";
@@ -85,7 +85,8 @@ export const getCustomerRefundsAcrossStores = async (
     for (const edge of customerEdges) {
       const node = edge.node;
 
-      const riskProfile = calculateCustomerRisk(node, riskSettings);
+      let lastKnownIp: string | null = null;
+      let riskProfile = calculateCustomerRisk(node, riskSettings);
 
       const totalOrders = node.orders.edges.length;
       const totalRefunds = node.orders.edges.reduce(
@@ -93,7 +94,6 @@ export const getCustomerRefundsAcrossStores = async (
         0
       );
 
-      let lastKnownIp: string | null = null;
       if (node.orders.edges.length > 0) {
         const mostRecentOrder = node.orders.edges[0].node;
         const orderId = mostRecentOrder.legacyResourceId;
@@ -116,7 +116,22 @@ export const getCustomerRefundsAcrossStores = async (
         }
       }
       const refundedStores = new Set<string>();
+      if (lastKnownIp) {
+        const flaggedOnSameIp = await database
+          .select()
+          .from(customers)
+          .where(
+            and(eq(customers.ip, lastKnownIp), eq(customers.flagged, true))
+          );
 
+        if (flaggedOnSameIp.length > 0) {
+          riskProfile = {
+            isFlagged: true,
+            riskLevel: 100,
+            riskReason: `Shares IP (${lastKnownIp}) with a flagged customer.`,
+          };
+        }
+      }
       const customerDataToUpsert = {
         id: node.id,
         name: node.displayName ?? "N/A",

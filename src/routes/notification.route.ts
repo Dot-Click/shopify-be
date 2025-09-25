@@ -12,7 +12,7 @@ notificationRouter.get(
 );
 
 notificationRouter.put(
-  "/mark-as-read/:ids",
+  "/mark-as-read/:id",
   protectRoute,
   markNotificationSeen
 );

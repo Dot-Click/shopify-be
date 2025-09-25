@@ -5,9 +5,12 @@ import { and, eq } from "drizzle-orm";
 import status from "http-status";
 import { logger } from "@/utils/logger.util";
 
-export const markNotificationSeen = async (req: Request, res: Response) => {
+export const markNotificationSeen = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
-    const { notificationId } = req.params;
+    const { id } = req.params;
 
     const user = req.user;
 
@@ -18,20 +21,24 @@ export const markNotificationSeen = async (req: Request, res: Response) => {
       return;
     }
 
+    const notif = await database.query.notifications.findFirst({
+      where: eq(notifications.id, id),
+    });
+
+    if (!notif) {
+      console.log("Notification not found:", id);
+      res.status(status.NOT_FOUND).json({ message: "Notification not found" });
+    }
+
     // Update notification to mark as read
     await database
       .update(notifications)
       .set({ read: true, updatedAt: new Date() })
-      .where(
-        and(
-          eq(notifications.id, notificationId),
-          eq(notifications.storeId, user.id)
-        )
-      );
+      .where(and(eq(notifications.id, id), eq(notifications.storeId, user.id)));
 
     res.status(200).json({
       message: "Notification marked as read",
-      data: { notificationId, read: true },
+      data: { id, read: true },
     });
   } catch (error: any) {
     logger.error("Error in markNotificationSeen:", error);
