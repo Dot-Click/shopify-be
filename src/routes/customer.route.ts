@@ -9,6 +9,7 @@ import { getTopRiskyIPs } from "@/controllers/customer/getriskyips.controller";
 import { getTopFlaggedReasons } from "@/controllers/customer/topflaggedreason.controller";
 import { getMonthlyRiskIncidents } from "@/controllers/customer/riskincidents.controller";
 import { getRiskChartData } from "@/controllers/customer/getaffectedincidents.controller";
+import { getFlaggedCustomersAndStores } from "@/controllers/customer/getflaggedcustomer.controller";
 
 const customerRouter = Router();
 
@@ -30,5 +31,10 @@ customerRouter.get(
   getMonthlyRiskIncidents
 );
 customerRouter.get("/risk-chart-data", protectRoute, getRiskChartData);
+customerRouter.get(
+  "/flagged-customer-store",
+  protectRoute,
+  getFlaggedCustomersAndStores
+);
 
 export default customerRouter;

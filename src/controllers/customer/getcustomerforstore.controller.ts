@@ -84,6 +84,7 @@ export const getCustomerRefundsAcrossStores = async (
 
     for (const edge of customerEdges) {
       const node = edge.node;
+      const refundedStores = new Set<string>();
 
       let lastKnownIp: string | null = null;
       let riskProfile = calculateCustomerRisk(node, riskSettings);
@@ -93,7 +94,9 @@ export const getCustomerRefundsAcrossStores = async (
         (acc: number, o: any) => acc + o.node.refunds.length,
         0
       );
-
+      if (totalRefunds > 0 && storeId) {
+        refundedStores.add(storeId);
+      }
       if (node.orders.edges.length > 0) {
         const mostRecentOrder = node.orders.edges[0].node;
         const orderId = mostRecentOrder.legacyResourceId;
@@ -115,7 +118,6 @@ export const getCustomerRefundsAcrossStores = async (
           );
         }
       }
-      const refundedStores = new Set<string>();
       if (lastKnownIp) {
         const flaggedOnSameIp = await database
           .select()
@@ -131,6 +133,16 @@ export const getCustomerRefundsAcrossStores = async (
             riskReason: `Shares IP (${lastKnownIp}) with a flagged customer.`,
           };
         }
+      }
+
+      const customerEmail = node.email ?? "N/A";
+      if (customerEmail !== "N/A") {
+        const existingStores = await database
+          .select({ storeId: customers.storeId })
+          .from(customers)
+          .where(eq(customers.email, customerEmail));
+
+        existingStores.forEach((s) => refundedStores.add(s.storeId!));
       }
       const customerDataToUpsert = {
         id: node.id,
