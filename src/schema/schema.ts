@@ -166,6 +166,11 @@ export const settings = pgTable("settings", {
   lostParcelPeriod: integer("lost_parcel_period").notNull(),
   lossRateThreshold: integer("loss_rate_threshold"),
   matchSensitivity: text("match_sensitivity"),
+  primaryAction: varchar("primary_action"),
+  requireESignature: boolean("require_signature").default(false),
+  forceCourierSignedDelivery: boolean("force_signed_delivery").default(false),
+  photoOnDelivery: boolean("photo_on_delivery").default(false),
+  sendCancellationEmail: boolean("send_cancellation_email").default(false),
   ...timeStamps,
 });
 

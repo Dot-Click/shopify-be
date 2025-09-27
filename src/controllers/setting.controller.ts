@@ -21,7 +21,14 @@ export const createSettings = async (
       lostParcelPeriod,
       lossRateThreshold,
       matchSensitivity,
+      primaryAction,
+      requireESignature,
+      forceCourierSignedDelivery,
+      photoOnDelivery,
+      sendCancellationEmail,
     } = req.body;
+
+    console.log(req.body);
 
     const existing = await database
       .select()
@@ -37,6 +44,11 @@ export const createSettings = async (
           lostParcelPeriod,
           lossRateThreshold,
           matchSensitivity,
+          primaryAction,
+          requireESignature,
+          forceCourierSignedDelivery,
+          photoOnDelivery,
+          sendCancellationEmail,
           updatedAt: new Date(),
         })
         .where(eq(settings.storeId, storeId as string));
@@ -48,6 +60,11 @@ export const createSettings = async (
         lostParcelPeriod,
         lossRateThreshold,
         matchSensitivity,
+        primaryAction,
+        requireESignature,
+        forceCourierSignedDelivery,
+        photoOnDelivery,
+        sendCancellationEmail,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
