@@ -206,6 +206,18 @@ export const auth = betterAuth({
   },
 
   hooks: {
+    before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/sign-in/email") {
+        const userVerified = ctx.context;
+        // console.log("Email verified:-", ctx.context.tables.user.fields);
+        // console.log("TABLES:-", ctx.context?.adapter?.options?.schema.user);
+        if (!userVerified) {
+          throw new Error(
+            "Your email is not verified. Please verify before signing in."
+          );
+        }
+      }
+    }),
     after: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/sign-up/email") {
         const newUser = ctx.context.newSession?.user;

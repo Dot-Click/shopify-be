@@ -24,6 +24,7 @@ const schemaObject = z.object({
   GC_WEBHOOK_SECRET: z.string(),
   GC_ENV: z.enum(["sandbox", "live"]),
   ADMIN_EMAIL: z.string(),
+  STRIPE_SECRET_KEY: z.string(),
 });
 
 const envSchema = schemaObject.safeParse(process.env);

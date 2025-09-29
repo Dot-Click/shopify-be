@@ -96,6 +96,7 @@ export const orders = pgTable("orders", {
   manualFlag: boolean("manual_flag").default(false),
   flagged: boolean("flagged").default(false),
   flagReason: text("flag_reason"),
+  autoCancel: boolean("auto_cancel").default(false),
   riskLevel: varchar("risk_level", { length: 50 }),
   totalRefunded: numeric("total_refunded", { precision: 12, scale: 2 }),
   riskRecommendation: varchar("risk_recommendation", { length: 50 }),
