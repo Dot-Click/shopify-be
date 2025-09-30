@@ -5,6 +5,7 @@ import { database } from "@/configs/connection.config";
 import { customers } from "@/schema/schema";
 import { eq } from "drizzle-orm";
 import axios from "axios";
+import { logActivity } from "@/service/logactivity.service";
 
 export const blockCustomer = async (
   req: Request,
@@ -64,6 +65,14 @@ export const blockCustomer = async (
         .set({ blocked: true, tags: "BLOCKED" })
         .where(eq(customers.id, customerId as string));
     }
+
+    await logActivity({
+      storeId: req.user?.id ?? "unknown",
+      action: "BLOCK_CUSTOMER",
+      for: "store",
+      customerId: customerId as string,
+      meta: { storeUrl },
+    });
 
     res.status(status.OK).json({ message: "Customer blocked successfully" });
   } catch (error: any) {

@@ -201,6 +201,30 @@ export const notifications = pgTable("notifications", {
   ...timeStamps,
 });
 
+export const activities = pgTable("activities", {
+  id: varchar("id", { length: 128 }).$defaultFn(() => createId()).primaryKey(),
+  action: text("action").notNull(),
+  for: varchar("for").notNull(),
+  storeId: varchar("store_id", { length: 128 })
+    .references(() => users.id, { onDelete: "cascade" }),
+  customerId: varchar("customer_id", { length: 128 }).references(
+    () => customers.id,
+    { onDelete: "set null" }
+  ),
+  orderId: varchar("order_id", { length: 128 }).references(() => orders.id, {
+    onDelete: "set null",
+  }),
+  meta: json("meta").$type<{
+    ip?: string;
+    reason?: string;
+    previousValue?: string;
+    newValue?: string;
+    [key: string]: any;
+  }>(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const session = pgTable("session", {
   id: text("id").primaryKey(),
   expiresAt: timestamp("expires_at").notNull(),

@@ -1,5 +1,7 @@
 import { database } from "@/configs/connection.config";
 import { customers } from "@/schema/schema";
+import { logActivity } from "@/service/logactivity.service";
+import { logger } from "@/utils/logger.util";
 import { format, subDays } from "date-fns";
 import { count, sql } from "drizzle-orm";
 import { Request, Response } from "express";
@@ -88,11 +90,21 @@ function generateReportHTML(reportData: any) {
     `;
 }
 
-export const customerReport = async (_req: Request, res: Response) => {
+export const customerReport = async (req: Request, res: Response) => {
   try {
     const today = new Date();
     const date30DaysAgo = subDays(today, 30);
     const date90DaysAgo = subDays(today, 90);
+
+
+    const user = req.user?.id
+
+    if (!user) {
+      res.status(status.BAD_REQUEST).json({ message: "Not a valid user!" })
+      logger.error("Not a valid user!")
+      return
+    }
+
 
     const [kpiResults] = await database
       .select({
@@ -144,7 +156,13 @@ export const customerReport = async (_req: Request, res: Response) => {
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.send(pdfBuffer);
 
-    console.log(`Report sent successfully: ${fileName}`);
+    await logActivity({
+      action: "GENERATE_REPORT",
+      for: "store",
+      storeId: user,
+      meta: { timestamp: new Date().toISOString() },
+    });
+
   } catch (error: any) {
     console.error(
       "ERROR: Failed to generate Customer Growth PDF report:",

@@ -1,5 +1,6 @@
 import { database } from "@/configs/connection.config";
 import { orders } from "@/schema/schema";
+import { logActivity } from "@/service/logactivity.service";
 import { eq } from "drizzle-orm";
 import { Request, Response } from "express";
 import status from "http-status";
@@ -31,6 +32,19 @@ export const addFlag = async (req: Request, res: Response): Promise<void> => {
       })
       .where(eq(orders.id, orderId as string));
 
+
+    await logActivity({
+      storeId: req.user?.id ?? "unknown",  
+      action: "ADDED_FLAG",
+      for: "store",
+      orderId: orderId as string,
+      meta: {
+        previousManualFlag: order?.manualFlag,
+        newManualFlag: true,
+      },
+    });
+
+    
     res
       .status(status.OK)
       .json({ message: "Flag added successfully", order: updatedOrder });

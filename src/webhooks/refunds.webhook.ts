@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { database } from "@/configs/connection.config";
 import { customers, notifications, orders } from "@/schema/schema";
 import { eq } from "drizzle-orm";
+import { logActivity } from "@/service/logactivity.service";
 
 export const refundsCreateWebhook = async (req: Request, res: Response) => {
   try {
@@ -32,9 +33,8 @@ export const refundsCreateWebhook = async (req: Request, res: Response) => {
       customerId: customerRecord?.id ?? null,
       type: "REFUND",
       title: `Refund detected for ${orderRecord.name}`,
-      message: `${customerRecord?.name || "Customer"} refunded order ${
-        orderRecord.name
-      }`,
+      message: `${customerRecord?.name || "Customer"} refunded order ${orderRecord.name
+        }`,
       meta: {
         orderId: orderRecord.id,
         orderName: orderRecord.name,
@@ -47,6 +47,15 @@ export const refundsCreateWebhook = async (req: Request, res: Response) => {
         detectedOn: new Date().toISOString(),
       },
     };
+
+    await logActivity({
+      action: "REFUND",
+      for: "customer",
+      orderId,
+      customerId: customerRecord?.id ?? null,
+      storeId: customerRecord?.storeId ?? null,
+      meta: notificationData,
+    });
 
     await database.insert(notifications).values(notificationData);
 

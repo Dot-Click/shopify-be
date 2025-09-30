@@ -6,6 +6,7 @@ import { database } from "@/configs/connection.config";
 import axios from "axios";
 import { logger } from "@/utils/logger.util";
 import { calculateCustomerRisk } from "@/service/riskycustomer.service";
+import { logActivity } from "@/service/logactivity.service";
 
 /**
  * This is to fetch all the customers from the Shopfiy of logged in user.
@@ -144,6 +145,13 @@ export const getCustomerRefundsAcrossStores = async (
 
         existingStores.forEach((s) => refundedStores.add(s.storeId!));
       }
+      await logActivity({
+        action: "UPSERT_CUSTOMER",
+        for: "customer",
+        storeId,
+        customerId: node.id,
+        meta: { totalOrders, totalRefunds, ip: lastKnownIp, flagged: riskProfile.isFlagged },
+      });
       const customerDataToUpsert = {
         id: node.id,
         name: node.displayName ?? "N/A",
@@ -175,6 +183,8 @@ export const getCustomerRefundsAcrossStores = async (
     }
 
     const resultFinal = await Promise.all(upsertPromises);
+
+
 
     res.status(status.OK).json({
       message: "Customers synced successfully.",

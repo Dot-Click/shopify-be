@@ -26,6 +26,7 @@ import customerRouter from "./routes/customer.route";
 import orderRouter from "./routes/order.route";
 import notificationRouter from "./routes/notification.route";
 import reportsRouter from "./routes/reports.route";
+import activityRouter from "./routes/activity.route";
 
 config();
 const app = express();
@@ -68,6 +69,7 @@ app.use("/api/settings", settingsRouter);
 app.use("/api/notifications", notificationRouter);
 app.use("/api/webhook", webhookRouter);
 app.use("/api/reports", reportsRouter);
+app.use("/api/activity", activityRouter);
 
 app.use(unknownRoutes);
 

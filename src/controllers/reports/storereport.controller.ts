@@ -5,6 +5,8 @@ import { users, customers, orders, session } from "@/schema/schema";
 import { eq, sql, desc, max } from "drizzle-orm";
 import { Request, Response } from "express";
 import status from "http-status";
+import { logActivity } from "@/service/logactivity.service";
+import { logger } from "@/utils/logger.util";
 
 function generateReportHTML(stores: any) {
   const tableRows = stores
@@ -15,11 +17,10 @@ function generateReportHTML(stores: any) {
             <td>${store.storeName}</td>
             <td>${store.ordersFlagged}</td>
             <td>${store.ordersReviewed}</td>
-            <td>${
-              store.lastLoginDate
-                ? format(new Date(store.lastLoginDate), "yyyy-MM-dd HH:mm")
-                : "N/A"
-            }</td>
+            <td>${store.lastLoginDate
+          ? format(new Date(store.lastLoginDate), "yyyy-MM-dd HH:mm")
+          : "N/A"
+        }</td>
         </tr>
     `
     )
@@ -62,8 +63,17 @@ function generateReportHTML(stores: any) {
     `;
 }
 
-export const storeReportActivity = async (_req: Request, res: Response) => {
+export const storeReportActivity = async (req: Request, res: Response) => {
   try {
+
+    const user = req.user?.id
+
+    if(!user){
+      res.status(status.BAD_REQUEST).json({message:"Not a valid user!"})
+      logger.error("Not a valid user!")
+      return
+    }
+
     const lastLoginSubquery = database
       .select({
         userId: session.userId,
@@ -121,7 +131,13 @@ export const storeReportActivity = async (_req: Request, res: Response) => {
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.send(pdfBuffer);
 
-    console.log(`Report sent successfully: ${fileName}`);
+    await logActivity({
+      action: "GENERATE_REPORT",
+      for: "store",
+      storeId: user,
+      meta: { timestamp: new Date().toISOString() },
+    });
+
   } catch (error: any) {
     console.error(
       "ERROR: Failed to generate Store Activity PDF report:",

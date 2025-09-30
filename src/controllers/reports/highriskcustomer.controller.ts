@@ -1,5 +1,7 @@
 import { database } from "@/configs/connection.config";
 import { customers, orders, fulfillmentOrders } from "@/schema/schema";
+import { logActivity } from "@/service/logactivity.service";
+import { logger } from "@/utils/logger.util";
 import { format } from "date-fns";
 import { eq, desc, count, or, and } from "drizzle-orm";
 import { Request, Response } from "express";
@@ -23,8 +25,8 @@ function generateReportHTML(reportData: any[]) {
     .map((d) => {
       const address = d.latestAddress
         ? [d.latestAddress.city, d.latestAddress.zip, d.latestAddress.country]
-            .filter(Boolean)
-            .join(", ")
+          .filter(Boolean)
+          .join(", ")
         : "N/A";
 
       return `
@@ -32,11 +34,10 @@ function generateReportHTML(reportData: any[]) {
                 <td>${maskEmail(d.email)}</td>
                 <td>${address}</td>
                 <td style="text-align: center;">${d.flaggedAttempts}</td>
-                <td>${
-                  d.lastAttemptDate
-                    ? format(new Date(d.lastAttemptDate), "MMM dd, yyyy HH:mm")
-                    : "N/A"
-                }</td>
+                <td>${d.lastAttemptDate
+          ? format(new Date(d.lastAttemptDate), "MMM dd, yyyy HH:mm")
+          : "N/A"
+        }</td>
             </tr>
         `;
     })
@@ -69,15 +70,13 @@ function generateReportHTML(reportData: any[]) {
 
             <div class="summary">
                 <p><strong>Purpose:</strong> Highlight repeat high-risk customers interacting with the store.</p>
-                <p><strong>Total High-Risk Customers found:</strong> ${
-                  reportData.length
-                }</p>
+                <p><strong>Total High-Risk Customers found:</strong> ${reportData.length
+    }</p>
             </div>
 
-            ${
-              reportData.length === 0
-                ? '<div class="no-data">No high-risk customer activity found.</div>'
-                : `
+            ${reportData.length === 0
+      ? '<div class="no-data">No high-risk customer activity found.</div>'
+      : `
             <table>
                 <thead>
                     <tr>
@@ -92,21 +91,27 @@ function generateReportHTML(reportData: any[]) {
                 </tbody>
             </table>
             `
-            }
+    }
         </body>
         </html>
     `;
 }
 
 export const getHighRiskActivityReport = async (
-  _req: Request,
+  req: Request,
   res: Response
 ) => {
   try {
-    console.log("Generating High-Risk Customer Activity Report...");
 
-    // 1. Identify High-Risk Customers
-    // We define a high-risk customer as someone who has been flagged in the customers table
+
+    const user = req.user?.id
+
+    if (!user) {
+      res.status(status.BAD_REQUEST).json({ message: "Not a valid user!" })
+      logger.error("Not a valid user!")
+      return
+    }
+
     const flaggedCustomers = await database
       .select({
         id: customers.id,
@@ -150,10 +155,10 @@ export const getHighRiskActivityReport = async (
           lastAttemptDate: lastOrderDetails?.createdAt ?? null,
           latestAddress: lastOrderDetails
             ? {
-                city: lastOrderDetails.city,
-                zip: lastOrderDetails.zip,
-                country: lastOrderDetails.country,
-              }
+              city: lastOrderDetails.city,
+              zip: lastOrderDetails.zip,
+              country: lastOrderDetails.country,
+            }
             : null,
         };
       })
@@ -204,7 +209,13 @@ export const getHighRiskActivityReport = async (
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.send(pdfBuffer);
 
-    console.log(`Report sent successfully: ${fileName}`);
+    await logActivity({
+      action: "GENERATE_REPORT",
+      for: "store",
+      storeId: user,
+      meta: { timestamp: new Date().toISOString() },
+    });
+
   } catch (error: any) {
     console.error(
       "ERROR: Failed to generate High-Risk Activity PDF report:",

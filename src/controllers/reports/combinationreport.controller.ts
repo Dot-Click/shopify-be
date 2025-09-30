@@ -1,5 +1,7 @@
 import { database } from "@/configs/connection.config";
 import { customers, orders, users } from "@/schema/schema";
+import { logActivity } from "@/service/logactivity.service";
+import { logger } from "@/utils/logger.util";
 import { format, subDays } from "date-fns";
 import { count, sql, desc } from "drizzle-orm";
 import { Request, Response } from "express";
@@ -72,13 +74,12 @@ function generateReportHTML(data: any) {
                             <thead><tr><th>Rank</th><th>Domain</th><th>Count</th></tr></thead>
                             <tbody>
                                 ${risk.topDomains
-                                  .map(
-                                    (d: any, i: any) =>
-                                      `<tr><td>${i + 1}</td><td>${
-                                        d.domain
-                                      }</td><td>${d.count}</td></tr>`
-                                  )
-                                  .join("")}
+      .map(
+        (d: any, i: any) =>
+          `<tr><td>${i + 1}</td><td>${d.domain
+          }</td><td>${d.count}</td></tr>`
+      )
+      .join("")}
                             </tbody>
                         </table>
                     </div>
@@ -97,9 +98,8 @@ function generateReportHTML(data: any) {
                     <p class="subtitle">Tracking new store sign-ups and platform growth.</p>
                 </div>
                 <div class="kpi-container">
-                    <div class="kpi-tile"><div class="kpi-value">${
-                      onboarding.newStoresLast30Days
-                    }</div><div class="kpi-label">New Stores (Last 30 Days)</div></div>
+                    <div class="kpi-tile"><div class="kpi-value">${onboarding.newStoresLast30Days
+    }</div><div class="kpi-label">New Stores (Last 30 Days)</div></div>
                     <div class="kpi-tile"><div class="kpi-value">N/A</div><div class="kpi-label">Stores Pending Activation</div></div>
                     <div class="kpi-tile"><div class="kpi-value">N/A</div><div class="kpi-label">Avg. Activation Time</div></div>
                 </div>
@@ -108,13 +108,12 @@ function generateReportHTML(data: any) {
                     <thead><tr><th>Plan</th><th>Number of Stores</th></tr></thead>
                     <tbody>
                         ${onboarding.storesByPlan
-                          .map(
-                            (p: any) =>
-                              `<tr><td>${p.plan || "Not Set"}</td><td>${
-                                p.count
-                              }</td></tr>`
-                          )
-                          .join("")}
+      .map(
+        (p: any) =>
+          `<tr><td>${p.plan || "Not Set"}</td><td>${p.count
+          }</td></tr>`
+      )
+      .join("")}
                     </tbody>
                 </table>
                 <p class="note">Note: "Pending Activation" and "Avg. Activation Time" require schema updates (e.g., an 'activated_at' timestamp) to be calculated.</p>
@@ -128,9 +127,8 @@ function generateReportHTML(data: any) {
                 </div>
                 <div class="kpi-container">
                     <div class="kpi-tile"><div class="kpi-value">£${effectiveness.preventedLoss.toLocaleString()}</div><div class="kpi-label">Est. Prevented Loss</div></div>
-                    <div class="kpi-tile"><div class="kpi-value">${
-                      effectiveness.percentCancelled
-                    }%</div><div class="kpi-label">% Flagged Orders Cancelled</div></div>
+                    <div class="kpi-tile"><div class="kpi-value">${effectiveness.percentCancelled
+    }%</div><div class="kpi-label">% Flagged Orders Cancelled</div></div>
                     <div class="kpi-tile"><div class="kpi-value">N/A</div><div class="kpi-label">% Confirmed Genuine Issues</div></div>
                 </div>
                 <h2>Monthly Prevented Loss Trend</h2>
@@ -155,11 +153,18 @@ function generateReportHTML(data: any) {
     `;
 }
 
-export const combinedReport = async (_req: Request, res: Response) => {
+export const combinedReport = async (req: Request, res: Response) => {
   try {
     console.log("Request received for Combined Staff Report.");
 
-    // --- 1. QUERIES FOR REPORT #3: RISK TRENDS ---
+    const user = req.user?.id
+
+    if (!user) {
+      res.status(status.BAD_REQUEST).json({ message: "Not a valid user!" })
+      logger.error("Not a valid user!")
+      return
+    }
+
     const totalFlaggedOrders = await database
       .select({ value: count() })
       .from(orders)
@@ -244,10 +249,10 @@ export const combinedReport = async (_req: Request, res: Response) => {
         percentCancelled:
           effectivenessStats.totalFlagged > 0
             ? (
-                (effectivenessStats.cancelledAndFlagged /
-                  effectivenessStats.totalFlagged) *
-                100
-              ).toFixed(1)
+              (effectivenessStats.cancelledAndFlagged /
+                effectivenessStats.totalFlagged) *
+              100
+            ).toFixed(1)
             : 0,
         monthlyPreventedLoss,
       },
@@ -272,7 +277,13 @@ export const combinedReport = async (_req: Request, res: Response) => {
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.send(pdfBuffer);
 
-    console.log(`Combined report sent successfully: ${fileName}`);
+    await logActivity({
+      action: "GENERATE_REPORT",
+      for: "store",
+      storeId: user,
+      meta: { timestamp: new Date().toISOString() },
+    });
+
   } catch (error: any) {
     console.error(
       "ERROR: Failed to generate Combined Staff PDF report:",

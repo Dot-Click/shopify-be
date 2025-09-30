@@ -1,5 +1,6 @@
 import { database } from "@/configs/connection.config";
 import { orders } from "@/schema/schema";
+import { logActivity } from "@/service/logactivity.service";
 import { eq } from "drizzle-orm";
 import { Request, Response } from "express";
 import status from "http-status";
@@ -35,6 +36,17 @@ export const deleteFlag = async (
         manualFlag: false,
       })
       .where(eq(orders.id, orderId as string));
+
+    await logActivity({
+      storeId: req.user?.id ?? "unknown",  
+      action: "REMOVED_FLAG",
+      for: "store",
+      orderId: orderId as string,
+      meta: {
+        previousManualFlag: order?.manualFlag,
+        newManualFlag: true,
+      },
+    });
 
     res
       .status(status.OK)
