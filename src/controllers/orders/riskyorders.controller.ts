@@ -1,6 +1,9 @@
+import { database } from "@/configs/connection.config";
+import { settings } from "@/schema/schema";
 import { calculateRiskyOrders } from "@/service/risk.service";
 import { Request, Response } from "express";
 import status from "http-status";
+import { eq } from "drizzle-orm";
 
 export const getRiskyOrders = async (req: Request, res: Response) => {
   try {
@@ -16,6 +19,17 @@ export const getRiskyOrders = async (req: Request, res: Response) => {
       return;
     }
 
+    const [orderSettings] = await database
+      .select({
+        primaryAction: settings.primaryAction,
+        requireESignature: settings.requireESignature,
+        forceCourierSignedDelivery: settings.forceCourierSignedDelivery,
+        photoOnDelivery: settings.photoOnDelivery,
+        sendCancellationEmail: settings.sendCancellationEmail,
+      })
+      .from(settings)
+      .where(eq(settings.storeId, storeId));
+
     const data = await calculateRiskyOrders({
       storeId,
       customerId,
@@ -24,7 +38,12 @@ export const getRiskyOrders = async (req: Request, res: Response) => {
     });
 
     res.setHeader("Cache-Control", "no-store");
-    res.status(status.OK).json(data);
+    res.status(status.OK).json({
+      id: data.customer.id,
+      email: data.customer.email,
+      orders: data.orders,
+      ...orderSettings,
+    });
   } catch (error: any) {
     console.error(error.response?.data || error.message || error);
     res
