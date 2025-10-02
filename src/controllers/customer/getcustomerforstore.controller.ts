@@ -35,7 +35,7 @@ export const getCustomerRefundsAcrossStores = async (
     if (!settingsResult) {
       res
         .status(status.BAD_REQUEST)
-        .json({ error: "Risk settings not configured for this store." });
+        .json({ error: "Please configure you settings." });
     }
 
     const riskSettings = settingsResult[0];
@@ -150,7 +150,12 @@ export const getCustomerRefundsAcrossStores = async (
         for: "customer",
         storeId,
         customerId: node.id,
-        meta: { totalOrders, totalRefunds, ip: lastKnownIp, flagged: riskProfile.isFlagged },
+        meta: {
+          totalOrders,
+          totalRefunds,
+          ip: lastKnownIp,
+          flagged: riskProfile.isFlagged,
+        },
       });
       const customerDataToUpsert = {
         id: node.id,
@@ -183,8 +188,6 @@ export const getCustomerRefundsAcrossStores = async (
     }
 
     const resultFinal = await Promise.all(upsertPromises);
-
-
 
     res.status(status.OK).json({
       message: "Customers synced successfully.",

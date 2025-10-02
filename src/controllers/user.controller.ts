@@ -1,5 +1,6 @@
 import { database } from "@/configs/connection.config";
 import { users } from "@/schema/schema";
+import { decrypt } from "@/service/encryption.service";
 import { logger } from "@/utils/logger.util";
 import { eq } from "drizzle-orm";
 import { Request, Response } from "express";
@@ -12,9 +13,21 @@ export const fetchStoresController = async (
   try {
     const allStores = await database.query.users.findMany();
 
+    const stores = allStores.map((store) => ({
+      ...store,
+      shopify_api_key: store.shopify_api_key
+        ? decrypt(store.shopify_api_key)
+        : null,
+      shopify_access_token: store.shopify_access_token
+        ? decrypt(store.shopify_access_token)
+        : null,
+    }));
+
+    console.log("stores:-", stores);
+
     res.status(status.OK).json({
       message: "All stores fetched successfully",
-      data: allStores,
+      data: stores,
     });
   } catch (error) {
     logger.error("Error in fetchStoresController:", error);

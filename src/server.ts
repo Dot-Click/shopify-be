@@ -1,7 +1,7 @@
 import { assignSocketToReqIO } from "@/middlewares/socket.middleware";
 import { connAuthBridge } from "@/middlewares/socket.middleware";
 import { prepareMigration } from "./utils/preparemigration.util";
-import { throttle } from "./middlewares/throttle.middleware";
+// import { throttle } from "./middlewares/throttle.middleware";
 import { registerEvents } from "@/utils/registerevents.util";
 import unknownRoutes from "@/routes/unknown.routes";
 import { swagger } from "@/configs/swagger.config";
@@ -59,7 +59,7 @@ app.set("trust proxy", true);
 app.use(morgan("dev"));
 app.all("/api/auth/*splat", toNodeHandler(auth));
 
-app.use(throttle("default"));
+// app.use(throttle("default"));
 app.use(express.json());
 app.use("/api/payment", paymentRouter);
 app.use("/api/user", userRouter);

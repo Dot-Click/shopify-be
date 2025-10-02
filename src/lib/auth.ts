@@ -21,6 +21,7 @@ import {
   registerRefundWebhook,
 } from "@/utils/webhook.util";
 import { ac, manager, support, admin } from "./permission";
+import { decrypt, encrypt } from "@/service/encryption.service";
 
 const isProduction = process.env.NODE_ENV === "production";
 export const auth = betterAuth({
@@ -286,12 +287,20 @@ export const auth = betterAuth({
         required: false,
         fieldName: "shopify_api_key",
         returned: true,
+        transform: {
+          input: (val: any) => (typeof val === "string" ? encrypt(val) : val),
+          output: (val: any) => (typeof val === "string" ? decrypt(val) : val),
+        },
       },
       shopify_access_token: {
         type: "string",
         required: false,
         fieldName: "shopify_access_token",
         returned: true,
+        transform: {
+          input: (val) => (typeof val === "string" ? encrypt(val) : val),
+          output: (val) => (typeof val === "string" ? decrypt(val) : val),
+        },
       },
       shopify_url: {
         type: "string",
