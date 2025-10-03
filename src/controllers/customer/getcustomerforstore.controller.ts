@@ -137,14 +137,19 @@ export const getCustomerRefundsAcrossStores = async (
       }
 
       const customerEmail = node.email ?? "N/A";
-      if (customerEmail !== "N/A") {
-        const existingStores = await database
-          .select({ storeId: customers.storeId })
-          .from(customers)
-          .where(eq(customers.email, customerEmail));
 
-        existingStores.forEach((s) => refundedStores.add(s.storeId!));
+      let flaggedStoresCount = 0;
+      if (customerEmail !== "N/A") {
+        const flaggedStores = await database
+          .selectDistinct({ storeId: customers.storeId })
+          .from(customers)
+          .where(
+            and(eq(customers.email, customerEmail), eq(customers.flagged, true))
+          );
+
+        flaggedStoresCount = flaggedStores.length;
       }
+
       await logActivity({
         action: "UPSERT_CUSTOMER",
         for: "customer",
@@ -169,6 +174,7 @@ export const getCustomerRefundsAcrossStores = async (
         riskLevel: Number(riskProfile.riskLevel),
         riskReason: riskProfile.riskReason ?? "",
         refundsFromStores: refundedStores.size,
+        flaggedStoresCount,
         storeId: storeId,
         tags: Array.isArray(node.tags) ? node.tags.join(",") : "",
       };

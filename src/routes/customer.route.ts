@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { protectRoute } from "@/middlewares/auth.middleware";
-import { blockCustomer } from "@/controllers/customer/blockcustomer.controller";
+import {
+  blockCustomer,
+  unblockCustomer,
+} from "@/controllers/customer/blockcustomer.controller";
 import { TotalFlaggedCustomers } from "@/controllers/customer/totalflagged.controller";
 import { getCustomerRefundsAcrossStores } from "@/controllers/customer/getcustomerforstore.controller";
 import { getCustomersForAdminDashboard } from "@/controllers/customer/getcustomersforadmin.controller";
@@ -16,6 +19,7 @@ const customerRouter = Router();
 customerRouter.get("/customers", protectRoute, getCustomerRefundsAcrossStores);
 customerRouter.get("/admin-customers", getCustomersForAdminDashboard);
 customerRouter.post("/block-customer", protectRoute, blockCustomer);
+customerRouter.post("/unblock-customer", protectRoute, unblockCustomer);
 customerRouter.get(
   "/total-flagged-customer",
   protectRoute,

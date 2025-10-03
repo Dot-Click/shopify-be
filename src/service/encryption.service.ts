@@ -44,7 +44,6 @@ export function encrypt(text: string) {
 }
 
 export function decrypt(encrypted: string) {
-  console.log("encrypted", encrypted);
   // if (!encrypted) return encrypted;
 
   // const parts = encrypted.split(":");

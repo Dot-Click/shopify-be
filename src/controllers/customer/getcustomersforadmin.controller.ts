@@ -2,6 +2,7 @@ import { database } from "@/configs/connection.config";
 import { customers } from "@/schema/schema";
 import { Request, Response } from "express";
 import status from "http-status";
+import { eq, and } from "drizzle-orm";
 
 /**
  * this is for admin dashboard, to fetch all customer of all stores
@@ -31,6 +32,7 @@ export const getCustomersForAdminDashboard = async (
           storesRefunded: new Set<string>(),
           riskLevel: 0,
           reasons: [] as string[],
+          storeId: c.storeId,
         };
       }
 
@@ -52,6 +54,15 @@ export const getCustomersForAdminDashboard = async (
       );
     }
 
+    for (const email of Object.keys(customerMap)) {
+      const flaggedStores = await database
+        .selectDistinct({ storeId: customers.storeId })
+        .from(customers)
+        .where(and(eq(customers.email, email), eq(customers.flagged, true)));
+
+      customerMap[email].flaggedStoresCount = flaggedStores.length;
+    }
+
     const results = Object.values(customerMap).map((c: any) => ({
       id: c.id,
       displayName: c.displayName,
@@ -63,6 +74,8 @@ export const getCustomersForAdminDashboard = async (
       riskLevel: c.riskLevel,
       refundsFromStores: c.storesRefunded.size,
       reasons: c.reasons,
+      storeId: c.storeId,
+      flaggedStoresCount: c.flaggedStoresCount,
     }));
 
     res.status(status.OK).json(results);
