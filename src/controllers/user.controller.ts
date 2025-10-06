@@ -1,9 +1,11 @@
+import cloudinary from "@/configs/cloudinary.config";
 import { database } from "@/configs/connection.config";
 import { users } from "@/schema/schema";
 import { decrypt } from "@/service/encryption.service";
 import { logger } from "@/utils/logger.util";
 import { eq } from "drizzle-orm";
 import { Request, Response } from "express";
+import formidable from "formidable";
 import { status } from "http-status";
 
 export const fetchStoresController = async (
@@ -67,5 +69,39 @@ export const updateStoreStatusController = async (
     res.status(status.INTERNAL_SERVER_ERROR).json({
       message: "An error occurred while updating store status.",
     });
+  }
+};
+
+export const imageUpload = async (req: Request, res: Response) => {
+  try {
+    const form = formidable();
+
+    const [_formData, files] = await form.parse<any, "userProfile">(req);
+
+    const userProfile = files.userProfile?.[0];
+
+    if (!userProfile) {
+      res
+        .status(status.UNPROCESSABLE_ENTITY)
+        .json({ message: "Image not provided" });
+      return;
+    }
+
+    const cloudinaryResponse = await cloudinary.uploader.upload(
+      userProfile.filepath,
+      { folder: "user" }
+    );
+    if (!cloudinaryResponse) {
+      res
+        .status(status.UNPROCESSABLE_ENTITY)
+        .json({ message: "Problem with image" });
+      return;
+    }
+
+    res.json({ url: cloudinaryResponse.secure_url });
+  } catch (err: any) {
+    console.error("Upload error:", err);
+    res.status(500).json({ error: "Upload failed" });
+    return;
   }
 };

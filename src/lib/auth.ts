@@ -2,11 +2,8 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { database } from "../configs/connection.config";
 import * as schema from "@/schema/schema";
 import { betterAuth } from "better-auth";
-import {
-  admin as adminPlugin,
-  createAuthMiddleware,
-  emailOTP,
-} from "better-auth/plugins";
+import { APIError, createAuthMiddleware } from "better-auth/api";
+import { admin as adminPlugin, emailOTP } from "better-auth/plugins";
 import { env } from "@/utils/env.util";
 import {
   adminApprovalNotificationTemplate,
@@ -22,6 +19,7 @@ import {
 } from "@/utils/webhook.util";
 import { ac, manager, support, admin } from "./permission";
 import { decrypt, encrypt } from "@/service/encryption.service";
+import { users } from "@/schema/schema";
 
 const isProduction = process.env.NODE_ENV === "production";
 export const auth = betterAuth({
@@ -208,14 +206,31 @@ export const auth = betterAuth({
 
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/sign-up/email") {
+        const shopify_url = ctx.body.shopify_url;
+
+        const existing = await database.query.users.findFirst({
+          where: eq(users.shopify_url, shopify_url),
+        });
+
+        if (existing) {
+          throw new APIError("BAD_REQUEST", {
+            message: "Shopify URL already registered.",
+          });
+        }
+      }
+
       if (ctx.path === "/sign-in/email") {
-        const userVerified = ctx.context;
-        // console.log("Email verified:-", ctx.context.tables.user.fields);
-        // console.log("TABLES:-", ctx.context?.adapter?.options?.schema.user);
-        if (!userVerified) {
-          throw new Error(
-            "Your email is not verified. Please verify before signing in."
-          );
+        const verified = ctx.body.email;
+
+        const existing = await database.query.users.findFirst({
+          where: eq(users.email, verified),
+        });
+
+        if (!existing?.emailVerified) {
+          throw new APIError("FORBIDDEN", {
+            message: "Only verified users can signin!",
+          });
         }
       }
     }),
