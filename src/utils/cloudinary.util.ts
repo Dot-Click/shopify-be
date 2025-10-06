@@ -1,4 +1,4 @@
-import { cloudinary } from "@/configs/cloudinary.config";
+import cloudinary from "@/configs/cloudinary.config";
 import { ResourceType } from "cloudinary";
 import { File } from "formidable";
 
