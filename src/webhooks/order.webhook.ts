@@ -33,8 +33,6 @@ export const ordersCreateWebhook = async (
     }
     const storeId = customerRecord.storeId;
 
-    console.log("Store ID:", storeId);
-
     const [store] = await database
       .select()
       .from(users)
@@ -65,11 +63,7 @@ export const ordersCreateWebhook = async (
       accessToken: storeAccessToken as string,
     });
 
-    console.log("Risk result order:", riskResult.orders);
-
     const highRiskOrder = riskResult.orders.find((o) => o.flagged === true);
-
-    console.log("THEEEE", highRiskOrder);
 
     if (highRiskOrder) {
       const msg = {
@@ -90,13 +84,10 @@ export const ordersCreateWebhook = async (
       };
 
       await sendgridClient.send(msg);
-
-      console.log("High-risk order email sent!");
     }
 
     res.status(200).send("✅ Webhook processed with risk check");
   } catch (error: any) {
-    console.error("Webhook error:", error.response?.data || error);
     res.status(500).send("❌ Error processing webhook");
   }
 };

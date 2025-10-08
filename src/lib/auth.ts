@@ -17,7 +17,7 @@ import {
   registerOrderWebhook,
   registerRefundWebhook,
 } from "@/utils/webhook.util";
-import { ac, manager, support, admin } from "./permission";
+import { ac, manager, support, admin, subadmin } from "./permission";
 import { decrypt, encrypt } from "@/service/encryption.service";
 import { users } from "@/schema/schema";
 
@@ -54,6 +54,7 @@ export const auth = betterAuth({
       ac,
       roles: {
         admin,
+        subadmin,
         manager,
         support,
       },
@@ -254,7 +255,11 @@ export const auth = betterAuth({
             photoOnDelivery: false,
             sendCancellationEmail: false,
           });
-          console.log("✅ Default settings created for store:", storeId);
+
+          await database
+            .update(users)
+            .set({ role: "subadmin" })
+            .where(eq(users.shopify_url, ctx.body.shopify_url));
         } catch (err: any) {
           console.error("❌ Failed to create default settings:", err);
         }
@@ -338,6 +343,12 @@ export const auth = betterAuth({
         type: "string",
         required: false,
         fieldName: "shopify_url",
+        returned: true,
+      },
+      role: {
+        type: "string",
+        required: false,
+        fieldName: "role",
         returned: true,
       },
     },

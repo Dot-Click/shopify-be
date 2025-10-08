@@ -1,13 +1,23 @@
 import { database } from "@/configs/connection.config";
-import { orders } from "@/schema/schema";
+import { customers, orders } from "@/schema/schema";
 import { and, gte, lte, eq, or } from "drizzle-orm";
 import { Request, Response } from "express";
+import status from "http-status";
 
 export const getLossPreventionValueReport = async (
   req: Request,
   res: Response
 ) => {
   try {
+    const user = req.user;
+
+    if (!user?.id) {
+      res
+        .status(status.UNAUTHORIZED)
+        .json({ error: "Unauthorized. Please log in." });
+      return;
+    }
+
     const { startDate, endDate } = req.query as {
       startDate?: string;
       endDate?: string;
@@ -19,10 +29,16 @@ export const getLossPreventionValueReport = async (
       : new Date(new Date().setDate(new Date().getDate() - 30));
 
     const flaggedOrders = await database
-      .select()
+      .select({
+        id: orders.id,
+        totalAmount: orders.totalAmount,
+        createdAt: orders.createdAt,
+      })
       .from(orders)
+      .leftJoin(customers, eq(orders.customerId, customers.id))
       .where(
         and(
+          eq(customers.storeId, user.id),
           gte(orders.createdAt, start),
           lte(orders.createdAt, end),
           or(eq(orders.flagged, true), eq(orders.autoCancel, true))

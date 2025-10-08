@@ -11,7 +11,7 @@ export const getSuspiciousOrdersSummary = async (
   try {
     const { startDate, endDate } = req.query;
     const userId = req.user?.id;
-
+    console.log(userId);
     if (!userId) {
       res.status(401).json({ error: "Unauthorized" });
       return;
