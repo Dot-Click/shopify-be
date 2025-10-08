@@ -242,6 +242,23 @@ export const auth = betterAuth({
           return;
         }
 
+        const storeId = newUser.id;
+
+        try {
+          await database.insert(schema.settings).values({
+            storeId,
+            lostParcelThreshold: 3,
+            lostParcelPeriod: 1,
+            requireESignature: false,
+            forceCourierSignedDelivery: false,
+            photoOnDelivery: false,
+            sendCancellationEmail: false,
+          });
+          console.log("✅ Default settings created for store:", storeId);
+        } catch (err: any) {
+          console.error("❌ Failed to create default settings:", err);
+        }
+
         const shopUrl = newUser.shopify_url;
         const accessToken = newUser.shopify_access_token;
 
