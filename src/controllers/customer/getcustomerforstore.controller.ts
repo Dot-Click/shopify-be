@@ -7,6 +7,7 @@ import axios from "axios";
 import { logger } from "@/utils/logger.util";
 import { calculateCustomerRisk } from "@/service/riskycustomer.service";
 import { logActivity } from "@/service/logactivity.service";
+import { decrypt } from "@/service/encryption.service";
 
 /**
  * This is to fetch all the customers from the Shopfiy of logged in user.
@@ -18,14 +19,17 @@ export const getCustomerRefundsAcrossStores = async (
   try {
     const data = req.user;
     const storeUrl = data?.shopify_url;
-    const accessToken = data?.shopify_access_token;
+
+    const getAccessToken = data?.shopify_access_token;
     const storeId = data?.id;
 
-    if (!storeUrl || !accessToken || !storeId) {
+    if (!storeUrl || !getAccessToken || !storeId) {
       res
         .status(status.UNAUTHORIZED)
         .json({ error: "Missing Shopify credentials or Store ID" });
     }
+
+    const accessToken = await decrypt(getAccessToken!);
 
     const settingsResult = await database
       .select()

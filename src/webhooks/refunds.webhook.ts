@@ -3,6 +3,7 @@ import { database } from "@/configs/connection.config";
 import { customers, notifications, orders } from "@/schema/schema";
 import { eq } from "drizzle-orm";
 import { logActivity } from "@/service/logactivity.service";
+import status from "http-status";
 
 export const refundsCreateWebhook = async (req: Request, res: Response) => {
   try {
@@ -18,7 +19,12 @@ export const refundsCreateWebhook = async (req: Request, res: Response) => {
       .where(eq(orders.id, orderId));
 
     if (!orderRecord) {
-      res.status(404).send("Order not found");
+      res.status(status.BAD_REQUEST).send("Order not found");
+      return;
+    }
+
+    if (!orderRecord.customerId) {
+      res.status(status.BAD_REQUEST).send("Order has no linked customerId");
       return;
     }
 
@@ -33,8 +39,9 @@ export const refundsCreateWebhook = async (req: Request, res: Response) => {
       customerId: customerRecord?.id ?? null,
       type: "REFUND",
       title: `Refund detected for ${orderRecord.name}`,
-      message: `${customerRecord?.name || "Customer"} refunded order ${orderRecord.name
-        }`,
+      message: `${customerRecord?.name || "Customer"} refunded order ${
+        orderRecord.name
+      }`,
       meta: {
         orderId: orderRecord.id,
         orderName: orderRecord.name,
@@ -61,9 +68,11 @@ export const refundsCreateWebhook = async (req: Request, res: Response) => {
 
     console.log("Refund notification created:", notificationData);
 
-    res.status(200).send("✅ Refund webhook processed");
+    res.status(status.OK).send("Refund webhook processed");
   } catch (error: any) {
     console.error("Refund webhook error:", error);
-    res.status(500).send("❌ Failed to process refund webhook");
+    res
+      .status(status.INTERNAL_SERVER_ERROR)
+      .send("Failed to process refund webhook");
   }
 };

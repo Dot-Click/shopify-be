@@ -59,6 +59,8 @@ export function decrypt(encrypted: string) {
     if (originalText === "") {
       return encrypted;
     }
+
+    console.log(originalText);
     return originalText;
   } catch (err) {
     console.error("Decrypt error:", err);

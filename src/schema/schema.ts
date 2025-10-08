@@ -82,7 +82,7 @@ export const orders = pgTable("orders", {
   name: varchar("name", { length: 50 }).notNull(),
   totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull(),
   currency: varchar("currency", { length: 10 }).notNull(),
-  customerId: varchar("customer_id").notNull(),
+
   customerEmail: varchar("customer_email", { length: 150 }),
   customerPhone: varchar("customer_phone", { length: 20 }),
   displayFulfillmentStatus: varchar("display_fulfillment_status", {
@@ -100,6 +100,9 @@ export const orders = pgTable("orders", {
   riskLevel: varchar("risk_level", { length: 50 }),
   totalRefunded: numeric("total_refunded", { precision: 12, scale: 2 }),
   riskRecommendation: varchar("risk_recommendation", { length: 50 }),
+  customerId: foreignkeyRef("customerId", () => customers.id, {
+    onDelete: "cascade",
+  }),
   ...timeStamps,
 });
 
@@ -134,8 +137,16 @@ export const fulfillmentOrders = pgTable("fulfillment_orders", {
   ...timeStamps,
 });
 
+export const customerRelations = relations(customers, ({ many }) => ({
+  orders: many(orders),
+}));
+
 // TODO: Relations B/W orders and orderLineItems
-export const orderRelations = relations(orders, ({ many }) => ({
+export const orderRelations = relations(orders, ({ many, one }) => ({
+  customers: one(customers, {
+    fields: [orders.customerId],
+    references: [customers.id],
+  }),
   orderItems: many(orderItems),
   fulfillmentOrders: many(fulfillmentOrders),
 }));
@@ -163,9 +174,11 @@ export const settings = pgTable("settings", {
   storeId: foreignkeyRef("store_id", () => users.id, {
     onDelete: "cascade",
   }).notNull(),
-  lostParcelThreshold: integer("lost_parcel_threshold").notNull(),
-  lostParcelPeriod: integer("lost_parcel_period").notNull(),
+
+  lostParcelThreshold: integer("lost_parcel_threshold").default(3).notNull(),
+  lostParcelPeriod: integer("lost_parcel_period").default(1).notNull(),
   lossRateThreshold: integer("loss_rate_threshold"),
+
   matchSensitivity: text("match_sensitivity"),
   primaryAction: varchar("primary_action"),
   requireESignature: boolean("require_signature").default(false),
@@ -202,11 +215,14 @@ export const notifications = pgTable("notifications", {
 });
 
 export const activities = pgTable("activities", {
-  id: varchar("id", { length: 128 }).$defaultFn(() => createId()).primaryKey(),
+  id: varchar("id", { length: 128 })
+    .$defaultFn(() => createId())
+    .primaryKey(),
   action: text("action").notNull(),
   for: varchar("for").notNull(),
-  storeId: varchar("store_id", { length: 128 })
-    .references(() => users.id, { onDelete: "cascade" }),
+  storeId: varchar("store_id", { length: 128 }).references(() => users.id, {
+    onDelete: "cascade",
+  }),
   customerId: varchar("customer_id", { length: 128 }).references(
     () => customers.id,
     { onDelete: "set null" }

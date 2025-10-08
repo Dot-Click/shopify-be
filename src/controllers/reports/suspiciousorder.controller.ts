@@ -1,6 +1,6 @@
 import { database } from "@/configs/connection.config";
-import { orders } from "@/schema/schema";
-import { between } from "drizzle-orm";
+import { customers, orders } from "@/schema/schema";
+import { between, eq, and } from "drizzle-orm";
 import { Request, Response } from "express";
 
 // Suspicious Orders Summary
@@ -10,16 +10,34 @@ export const getSuspiciousOrdersSummary = async (
 ) => {
   try {
     const { startDate, endDate } = req.query;
-    console.log("QUERY:-", req.query);
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
     const end = endDate ? new Date(endDate as string) : new Date();
     const start = startDate
       ? new Date(startDate as string)
       : new Date(new Date().setDate(end.getDate() - 30));
 
     const allOrders = await database
-      .select()
+      .select({
+        id: orders.id,
+        totalAmount: orders.totalAmount,
+        flagged: orders.flagged,
+        autoCancel: orders.autoCancel,
+        createdAt: orders.createdAt,
+      })
       .from(orders)
-      .where(between(orders.createdAt, start, end));
+      .innerJoin(customers, eq(orders.customerId, customers.id))
+      .where(
+        and(
+          eq(customers.storeId, userId),
+          between(orders.createdAt, start, end)
+        )
+      );
 
     const totalOrders = allOrders.length;
 
