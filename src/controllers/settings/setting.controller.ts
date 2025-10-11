@@ -26,6 +26,7 @@ export const createSettings = async (
       forceCourierSignedDelivery,
       photoOnDelivery,
       sendCancellationEmail,
+      includeWavierLink,
     } = req.body;
 
     console.log(req.body);
@@ -49,6 +50,7 @@ export const createSettings = async (
           forceCourierSignedDelivery,
           photoOnDelivery,
           sendCancellationEmail,
+          includeWavierLink,
           updatedAt: new Date(),
         })
         .where(eq(settings.storeId, storeId as string));
@@ -65,6 +67,7 @@ export const createSettings = async (
         forceCourierSignedDelivery,
         photoOnDelivery,
         sendCancellationEmail,
+        includeWavierLink,
         createdAt: new Date(),
         updatedAt: new Date(),
       });

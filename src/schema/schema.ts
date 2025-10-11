@@ -185,6 +185,7 @@ export const settings = pgTable("settings", {
   forceCourierSignedDelivery: boolean("force_signed_delivery").default(false),
   photoOnDelivery: boolean("photo_on_delivery").default(false),
   sendCancellationEmail: boolean("send_cancellation_email").default(false),
+  includeWavierLink: boolean("include_wavier_link").default(false),
   ...timeStamps,
 });
 
