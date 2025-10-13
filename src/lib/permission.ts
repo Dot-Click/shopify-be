@@ -8,6 +8,11 @@ export const statement = {
 
 export const ac = createAccessControl(statement);
 
+export const superadmin = ac.newRole({
+  project: ["create", "update"],
+  ...adminAc.statements,
+});
+
 export const admin = ac.newRole({
   project: ["create", "update"],
   ...adminAc.statements,
@@ -15,6 +20,6 @@ export const admin = ac.newRole({
 
 export const manager = ac.newRole({}) as any;
 
-export const subadmin = ac.newRole({}) as any;
+// export const subadmin = ac.newRole({}) as any;
 
 export const support = ac.newRole({}) as any;

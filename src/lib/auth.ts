@@ -17,7 +17,7 @@ import {
   registerOrderWebhook,
   registerRefundWebhook,
 } from "@/utils/webhook.util";
-import { ac, manager, support, admin, subadmin } from "./permission";
+import { ac, manager, support, admin, superadmin } from "./permission";
 import { decrypt, encrypt } from "@/service/encryption.service";
 import { users } from "@/schema/schema";
 
@@ -51,10 +51,11 @@ export const auth = betterAuth({
 
   plugins: [
     adminPlugin({
+      adminRoles: ["admin", "superadmin"],
       ac,
       roles: {
         admin,
-        subadmin,
+        superadmin,
         manager,
         support,
       },
