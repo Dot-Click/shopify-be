@@ -1,9 +1,11 @@
 import { combinedReport } from "@/controllers/reports/combinationreport.controller";
 import { customerReport } from "@/controllers/reports/customerreport.controller";
+import { getStoreGrowthMetrics } from "@/controllers/reports/customersbgrowth.controller";
 import { getHighRiskActivityReport } from "@/controllers/reports/highriskcustomer.controller";
 import { getLossPreventionValueReport } from "@/controllers/reports/lossprevention.controller";
 import { storeReportActivity } from "@/controllers/reports/storereport.controller";
 import { getSuspiciousOrdersSummary } from "@/controllers/reports/suspiciousorder.controller";
+import { riskDashboardController } from "@/controllers/reports/widenetwork.controller";
 import { protectRoute } from "@/middlewares/auth.middleware";
 import { Router } from "express";
 
@@ -18,6 +20,21 @@ reportsRouter.get(
   protectRoute,
   getHighRiskActivityReport
 );
+
+reportsRouter.get(
+  "/customer-db-growth",
+  protectRoute,
+  getStoreGrowthMetrics
+);
+
+
+reportsRouter.get(
+  "/widenetwork-report",
+  protectRoute,
+  riskDashboardController
+);
+
+
 
 // These are Tables for report page
 reportsRouter.get(

@@ -169,7 +169,8 @@ export const combinedReport = async (req: Request, res: Response) => {
       .select({ value: count() })
       .from(orders)
       .where(sql`${orders.flagged} = true`);
-    const topDomains = await database
+    
+      const topDomains = await database
       .select({
         domain:
           sql`SUBSTRING(${customers.email} FROM POSITION('@' IN ${customers.email}) + 1)`.as(
@@ -181,7 +182,8 @@ export const combinedReport = async (req: Request, res: Response) => {
       .groupBy(sql`domain`)
       .orderBy(desc(sql`count`))
       .limit(10);
-    const monthlyFlaggedOrders = await database
+    
+      const monthlyFlaggedOrders = await database
       .select({
         month: sql`DATE_TRUNC('month', ${orders.createdAt})`.as("month"),
         count: count().as("count"),
@@ -196,7 +198,8 @@ export const combinedReport = async (req: Request, res: Response) => {
       .select({ value: count() })
       .from(users)
       .where(sql`${users.createdAt} >= ${subDays(new Date(), 30)}`);
-    const storesByPlan = await database
+  
+      const storesByPlan = await database
       .select({ plan: users.plan, count: count().as("count") })
       .from(users)
       .groupBy(users.plan)
@@ -219,7 +222,8 @@ export const combinedReport = async (req: Request, res: Response) => {
           ),
       })
       .from(orders);
-    const monthlyPreventedLoss = await database
+
+      const monthlyPreventedLoss = await database
       .select({
         month: sql`DATE_TRUNC('month', ${orders.createdAt})`.as("month"),
         amount:

@@ -6,7 +6,7 @@ import { Request, Response } from "express";
 // Suspicious Orders Summary
 export const getSuspiciousOrdersSummary = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { startDate, endDate } = req.query;
@@ -35,8 +35,8 @@ export const getSuspiciousOrdersSummary = async (
       .where(
         and(
           eq(customers.storeId, userId),
-          between(orders.createdAt, start, end)
-        )
+          between(orders.createdAt, start, end),
+        ),
       );
 
     const totalOrders = allOrders.length;
