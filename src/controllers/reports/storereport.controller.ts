@@ -1,4 +1,4 @@
-import puppeteer from "puppeteer";
+// import puppeteer from "puppeteer";
 import { format } from "date-fns";
 import { database } from "@/configs/connection.config";
 import { users, customers, orders, session } from "@/schema/schema";
@@ -8,68 +8,68 @@ import status from "http-status";
 import { logActivity } from "@/service/logactivity.service";
 import { logger } from "@/utils/logger.util";
 
-function generateReportHTML(stores: any) {
-  const tableRows = stores
-    .map(
-      (store: any, index: number) => `
-        <tr>
-            <td>${index + 1}</td>
-            <td>${store.storeName}</td>
-            <td>${store.ordersFlagged}</td>
-            <td>${store.ordersReviewed}</td>
-            <td>${store.lastLoginDate
-          ? format(new Date(store.lastLoginDate), "yyyy-MM-dd HH:mm")
-          : "N/A"
-        }</td>
-        </tr>
-    `
-    )
-    .join("");
+// function generateReportHTML(stores: any) {
+//   const tableRows = stores
+//     .map(
+//       (store: any, index: number) => `
+//         <tr>
+//             <td>${index + 1}</td>
+//             <td>${store.storeName}</td>
+//             <td>${store.ordersFlagged}</td>
+//             <td>${store.ordersReviewed}</td>
+//             <td>${store.lastLoginDate
+//           ? format(new Date(store.lastLoginDate), "yyyy-MM-dd HH:mm")
+//           : "N/A"
+//         }</td>
+//         </tr>
+//     `
+//     )
+//     .join("");
 
-  return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body { font-family: 'Helvetica', sans-serif; font-size: 10px; color: #333; }
-            h1 { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-            p { font-size: 11px; color: #777; margin-top: 0; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #e0e0e0; padding: 8px; text-align: left; }
-            th { background-color: #2c3e50; color: white; font-weight: bold; }
-            tr:nth-child(even) { background-color: #f8f9fa; }
-            td:nth-child(1), td:nth-child(3), td:nth-child(4) { text-align: center; }
-          </style>
-        </head>
-        <body>
-          <h1>Store Activity & Utilisation Report</h1>
-          <p>Generated on: ${format(new Date(), "yyyy-MM-dd")}</p>
-          <table>
-            <thead>
-              <tr>
-                <th style="width: 8%;">Rank</th>
-                <th style="width: 42%;">Store Name</th>
-                <th style="width: 15%;">Orders Flagged</th>
-                <th style="width: 15%;">Orders Reviewed</th>
-                <th style="width: 20%;">Last Login</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tableRows}
-            </tbody>
-          </table>
-        </body>
-        </html>
-    `;
-}
+//   return `
+//         <!DOCTYPE html>
+//         <html>
+//         <head>
+//           <style>
+//             body { font-family: 'Helvetica', sans-serif; font-size: 10px; color: #333; }
+//             h1 { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+//             p { font-size: 11px; color: #777; margin-top: 0; }
+//             table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+//             th, td { border: 1px solid #e0e0e0; padding: 8px; text-align: left; }
+//             th { background-color: #2c3e50; color: white; font-weight: bold; }
+//             tr:nth-child(even) { background-color: #f8f9fa; }
+//             td:nth-child(1), td:nth-child(3), td:nth-child(4) { text-align: center; }
+//           </style>
+//         </head>
+//         <body>
+//           <h1>Store Activity & Utilisation Report</h1>
+//           <p>Generated on: ${format(new Date(), "yyyy-MM-dd")}</p>
+//           <table>
+//             <thead>
+//               <tr>
+//                 <th style="width: 8%;">Rank</th>
+//                 <th style="width: 42%;">Store Name</th>
+//                 <th style="width: 15%;">Orders Flagged</th>
+//                 <th style="width: 15%;">Orders Reviewed</th>
+//                 <th style="width: 20%;">Last Login</th>
+//               </tr>
+//             </thead>
+//             <tbody>
+//               ${tableRows}
+//             </tbody>
+//           </table>
+//         </body>
+//         </html>
+//     `;
+// }
 
 export const storeReportActivity = async (req: Request, res: Response) => {
   try {
 
     const user = req.user?.id
 
-    if(!user){
-      res.status(status.BAD_REQUEST).json({message:"Not a valid user!"})
+    if (!user) {
+      res.status(status.BAD_REQUEST).json({ message: "Not a valid user!" })
       logger.error("Not a valid user!")
       return
     }
@@ -87,55 +87,86 @@ export const storeReportActivity = async (req: Request, res: Response) => {
       .select({
         storeId: users.id,
         storeName: users.name,
+        storeEmail: users.email,
+        storeApiKey: users.shopify_api_key,
+
+        ordersAutoCancelled:
+          sql<number>`COUNT(DISTINCT CASE WHEN ${orders.autoCancel} = true THEN ${orders.id} END)`
+            .as("ordersAutoCancelled"),
 
         ordersFlagged:
-          sql`COUNT(DISTINCT CASE WHEN ${orders.flagged} = true THEN ${orders.id} END)`
-            .mapWith(Number)
-            .as("orders_flagged"),
-
-        ordersReviewed: sql`0`.mapWith(Number).as("orders_reviewed"),
+          sql<number>`COUNT(DISTINCT CASE WHEN ${orders.flagged} = true AND ${orders.autoCancel} = false THEN ${orders.id} END)`
+            .as("ordersFlagged"),
+        ordersReviewed:
+          sql<number>`COUNT(DISTINCT CASE WHEN ${orders.manualFlag} = true AND ${orders.autoCancel} = false THEN ${orders.id} END)`
+            .as("ordersReviewed"),
 
         lastLoginDate: lastLoginSubquery.lastLoginDate,
       })
       .from(users)
-
       .leftJoin(customers, eq(users.id, customers.storeId))
       .leftJoin(orders, eq(customers.id, orders.customerId))
       .leftJoin(lastLoginSubquery, eq(users.id, lastLoginSubquery.userId))
-      .groupBy(users.id, users.name, lastLoginSubquery.lastLoginDate)
-      .orderBy(desc(sql`orders_flagged`));
+      .groupBy(users.id,
+        users.name,
+        users.email,
+        users.shopify_api_key,
+        lastLoginSubquery.lastLoginDate
+      )
+      .orderBy(desc(sql.raw(`"ordersFlagged"`)));
 
     console.log(
       `Successfully calculated data for ${storeActivityData.length} stores.`
     );
 
-    const htmlContent = generateReportHTML(storeActivityData);
+    // const htmlContent = generateReportHTML(storeActivityData);
 
-    const browser = await puppeteer.launch({
-      args: ["--no-sandbox", "--disable-dev-shm-usage"],
-    });
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: "networkidle0" });
-    const pdfBuffer = await page.pdf({
-      format: "A4",
-      landscape: true,
-      printBackground: true,
-    });
-    await browser.close();
+    // const browser = await puppeteer.launch({
+    //   args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    // });
+    // const page = await browser.newPage();
+    // await page.setContent(htmlContent, { waitUntil: "networkidle0" });
+    // const pdfBuffer = await page.pdf({
+    //   format: "A4",
+    //   landscape: true,
+    //   printBackground: true,
+    // });
+    // await browser.close();
 
-    const fileName = `Store_Activity_Report_${format(
-      new Date(),
-      "yyyy-MM-dd"
-    )}.pdf`;
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-    res.send(pdfBuffer);
+    // const fileName = `Store_Activity_Report_${format(
+    //   new Date(),
+    //   "yyyy-MM-dd"
+    // )}.pdf`;
+    // res.setHeader("Content-Type", "application/pdf");
+    // res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    // res.send(pdfBuffer);
+
+    const rankedActivityData = storeActivityData.map((store) => ({
+      storeId: store.storeId,
+      storeName: store.storeName,
+      ordersFlagged: store.ordersFlagged || 0,
+      email: store.storeEmail || "N/A",
+      apiKey: store.storeApiKey || "N/A",
+      ordersReviewed: store.ordersReviewed || 0,
+      lastLoginDate: store.lastLoginDate ? format(new Date(store.lastLoginDate), "yyyy-MM-dd HH:mm") : "N/A",
+    }));
+
+    console.log(
+      [rankedActivityData]
+    );
 
     await logActivity({
       action: "GENERATE_REPORT",
       for: "store",
       storeId: user,
       meta: { timestamp: new Date().toISOString() },
+    });
+
+    res.status(status.OK).json({
+      success: true,
+      reportName: "Store Activity & Utilisation Report",
+      generatedOn: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+      data: rankedActivityData,
     });
 
   } catch (error: any) {

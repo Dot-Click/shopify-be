@@ -35,6 +35,8 @@ export const riskDashboardController = async (_req: Request, res: Response) => {
             .orderBy(desc(sql`count`))
             .limit(10);
 
+            console.log("Top Domains for Flagged Orders:", topDomains);
+
         // 3. Growth of “repeat risk” cases month over month
         // Logic: An order is "repeat risk" if the customer has more than one flagged order.
 
@@ -71,15 +73,15 @@ export const riskDashboardController = async (_req: Request, res: Response) => {
 
         // 4. Geographic Data for Heat Map (Using Postcodes as location data)
         // Needs a query to get locations with the highest number of flagged orders.
-        const topFlaggedLocations = await database
-            .select()
-            .from(orders)
-            .innerJoin(customers, eq(orders.customerId, customers.id))
-            .where(and(
-                eq(orders.flagged, true)
-            ))
-            .orderBy(desc(sql`count`))
-            .limit(100); // Limit to a reasonable number for map rendering
+        // const topFlaggedLocations = await database
+        //     .select()
+        //     .from(orders)
+        //     .innerJoin(customers, eq(orders.customerId, customers.id))
+        //     .where(and(
+        //         eq(orders.flagged, true)
+        //     ))
+        //     .orderBy(desc(sql`count`))
+        //     .limit(100); // Limit to a reasonable number for map rendering
 
         console.log("Risk Dashboard data calculated successfully.");
 
@@ -87,8 +89,8 @@ export const riskDashboardController = async (_req: Request, res: Response) => {
         const dashboardData = {
             totalFlaggedOrders: totalFlaggedOrders[0].value,
             top10Domains: topDomains,
-            monthlyRepeatRisk: monthlyRepeatRiskOrders,
-            flaggedLocations: topFlaggedLocations,
+            monthlyRepeatRisk: monthlyRepeatRiskOrders
+            // flaggedLocations: topFlaggedLocations,
         };
 
         res.status(status.OK).json(dashboardData);

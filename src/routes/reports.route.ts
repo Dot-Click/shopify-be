@@ -1,8 +1,10 @@
 import { combinedReport } from "@/controllers/reports/combinationreport.controller";
 import { customerReport } from "@/controllers/reports/customerreport.controller";
 import { getStoreGrowthMetrics } from "@/controllers/reports/customersbgrowth.controller";
+import { effectivenessController } from "@/controllers/reports/effectivenessreport.controller";
 import { getHighRiskActivityReport } from "@/controllers/reports/highriskcustomer.controller";
 import { getLossPreventionValueReport } from "@/controllers/reports/lossprevention.controller";
+import { OnboardingReportController } from "@/controllers/reports/onboardingreport.controller";
 import { storeReportActivity } from "@/controllers/reports/storereport.controller";
 import { getSuspiciousOrdersSummary } from "@/controllers/reports/suspiciousorder.controller";
 import { riskDashboardController } from "@/controllers/reports/widenetwork.controller";
@@ -32,6 +34,20 @@ reportsRouter.get(
   "/widenetwork-report",
   protectRoute,
   riskDashboardController
+);
+
+
+reportsRouter.get(
+  "/onboarding-report",
+  protectRoute,
+  OnboardingReportController
+);
+
+
+reportsRouter.get(
+  "/effectiveness-report",
+  protectRoute,
+  effectivenessController
 );
 
 
