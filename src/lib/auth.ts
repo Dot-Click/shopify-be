@@ -11,7 +11,6 @@ import {
   staffInvitationTemplate,
   storeInvitationAcceptedTemplate,
 } from "@/utils/sendgrid.util";
-import { sendgridClient } from "@/configs/sendgrid.config";
 import { eq } from "drizzle-orm";
 import {
   registerOrderWebhook,
@@ -20,6 +19,7 @@ import {
 import { ac, manager, support, admin, superadmin } from "./permission";
 import { decrypt, encrypt } from "@/service/encryption.service";
 import { users } from "@/schema/schema";
+import { sendEmail } from "@/configs/brevo.config";
 
 const isProduction = process.env.NODE_ENV === "production";
 export const auth = betterAuth({
@@ -93,16 +93,11 @@ export const auth = betterAuth({
           // --- Step 3: Construct and send the email ---
           const msg = {
             to: email,
-            from: {
-              email: env.SENDGRID_SENDER_EMAIL!,
-              name: env.SENDGRID_SENDER_NAME!,
-            },
-            subject: emailSubject, // Use the dynamic subject
-            html: emailHtml, // Use the dynamic HTML template
-            replyTo: env.SENDGRID_SENDER_EMAIL!,
+            subject: emailSubject,
+            htmlContent: emailHtml,
           };
 
-          await sendgridClient.send(msg);
+          await sendEmail(msg);
           console.log(
             `Successfully sent '${emailSubject}' email to ${email} via SendGrid.`
           );
@@ -120,23 +115,35 @@ export const auth = betterAuth({
         const resetLink = `${env.FRONTEND_DOMAIN}/reset-password?token=${token}`;
 
         console.log(user);
-        const msg = {
-          to: user.email,
-          from: {
-            email: env.SENDGRID_SENDER_EMAIL!,
-            name: env.SENDGRID_SENDER_NAME!,
-          },
-          subject: "Your Password Reset Request",
-          html: resetPasswordTemplate({
-            resetLink: resetLink,
-            userName:
-              user.name || (user.email ? user.email.split("@")[0] : "user"),
-          }),
-          replyTo: env.SENDGRID_SENDER_EMAIL!,
-        };
 
-        await sendgridClient.send(msg);
-        console.log("Successfully sent password reset email via SendGrid.");
+        const emailSubject = "Your Password Reset Request";
+
+        // Generate dynamic user name for the template
+        const userName = user.name || (user.email ? user.email.split("@")[0] : "User");
+
+        // Generate the HTML content using your template function
+        const emailHtml = resetPasswordTemplate({
+          resetLink: resetLink,
+          userName: userName,
+        });
+
+        // --- Replace SendGrid logic with your Brevo/Nodemailer utility ---
+        const emailSent = await sendEmail({
+          to: user.email,
+          subject: emailSubject,
+          htmlContent: emailHtml,
+          // The 'from' address is handled by your sendEmail utility's defaults or your ENV.
+          // You can explicitly set it here if needed, but using the default is cleaner.
+          // from: `"${env.BREVO_SENDER_NAME}" <${env.BREVO_SENDER_EMAIL}>` 
+        });
+
+        if (emailSent) {
+          console.log("Successfully sent password reset email via Brevo/Nodemailer.");
+        } else {
+          // The sendEmail utility already handles internal logging for failure, 
+          // but we'll re-throw for the caller to handle.
+          throw new Error("Email sending failed according to utility.");
+        }
       } catch (error) {
         console.error("Failed to send password reset email:", error);
         throw new Error("Failed to send password reset email.");
@@ -180,27 +187,40 @@ export const auth = betterAuth({
       const averageOrdersPerMonth =
         user.average_orders_per_month || "Not Provided";
 
-      const msg = {
-        to: env.ADMIN_EMAIL!,
-        from: {
-          email: env.SENDGRID_SENDER_EMAIL!,
-          name: env.SENDGRID_SENDER_NAME!,
-        },
-        subject: "New User Registration - Approval Required",
-        html: adminApprovalNotificationTemplate({
-          userName,
-          userEmail,
-          companyName,
-          shopifyUrl,
-          companyRegistrationNumber,
-          averageOrdersPerMonth,
-          subscriptionPlan,
-          approvalLink,
-        }),
-        replyTo: env.SENDGRID_SENDER_EMAIL!,
-      };
+      // --- HTML content generation ---
+      const emailHtml = adminApprovalNotificationTemplate({
+        userName,
+        userEmail,
+        companyName,
+        shopifyUrl,
+        companyRegistrationNumber,
+        averageOrdersPerMonth,
+        subscriptionPlan,
+        approvalLink,
+      });
 
-      await sendgridClient.send(msg);
+      const emailSubject = "New User Registration - Approval Required";
+
+      // --- Replace SendGrid logic with your Brevo/Nodemailer utility ---
+      try {
+        const emailSent = await sendEmail({
+          to: env.ADMIN_EMAIL!, // The recipient is the admin's email
+          subject: emailSubject,
+          htmlContent: emailHtml,
+          // The 'from' address is handled by your sendEmail utility's defaults or your ENV.
+        });
+
+        if (emailSent) {
+          console.log(
+            `Successfully sent '${emailSubject}' email to ${env.ADMIN_EMAIL!} via Brevo/Nodemailer.`
+          );
+        } else {
+          throw new Error("Email sending failed according to utility.");
+        }
+      } catch (error) {
+        console.error("Failed to send admin approval email:", error);
+        throw new Error("Failed to send admin approval email.");
+      }
     },
     // autoSignInAfterVerification: true,
     sendOnSignUp: false,

@@ -186,6 +186,13 @@ export const settings = pgTable("settings", {
   photoOnDelivery: boolean("photo_on_delivery").default(false),
   sendCancellationEmail: boolean("send_cancellation_email").default(false),
   includeWavierLink: boolean("include_wavier_link").default(false),
+
+  emailNotificationsEnabled: boolean("email_notifications_enabled").default(true),
+  notificationEmail: varchar("notification_email", { length: 255 }).default('info@example.com'),
+  includeOrderDetails: boolean("include_order_details").default(true),
+  includeReasonForFlag: boolean("include_reason_for_flag").default(true),
+  includeRecommendedAction: boolean("include_recommended_action").default(true),
+
   ...timeStamps,
 });
 

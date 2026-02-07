@@ -15,16 +15,26 @@ const schemaObject = z.object({
   CONNECTION_URL: z.string(),
   BACKEND_DOMAIN: z.string(),
   COOKIE_SECRET: z.string(),
+
   SENDGRID_API_KEY: z.string(),
   SENDGRID_SENDER_NAME: z.string(),
   SENDGRID_SENDER_EMAIL: z.string(),
+  
+  BREVO_EMAIL: z.string(),
+  BREVO_API_KEY: z.string(),
+
   JWT_SECRET: z.string(),
+  
   DATABASE_NAME: z.string(),
+  
   GC_ACCESS_TOKEN: z.string(),
   GC_WEBHOOK_SECRET: z.string(),
   GC_ENV: z.enum(["sandbox", "live"]),
+  
   ADMIN_EMAIL: z.string(),
+  
   ENCRYPTION_KEY: z.string(),
+  
   STRIPE_SECRET_KEY: z.string(),
 });
 

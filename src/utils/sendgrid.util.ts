@@ -110,12 +110,10 @@ export const adminApprovalNotificationTemplate = ({
         <p><strong>Selected Subscription:</strong> ${subscriptionPlan}</p>
         <p><strong>Company Name:</strong> ${companyName || "Not Provided"}</p>
         <p><strong>Shopify URL:</strong> ${shopifyUrl || "Not Provided"}</p>
-        <p><strong>Company Registration #:</strong> ${
-          companyRegistrationNumber || "Not Provided"
-        }</p>
-        <p><strong>Avg Orders/Month:</strong> ${
-          averageOrdersPerMonth || "Not Provided"
-        }</p>
+        <p><strong>Company Registration #:</strong> ${companyRegistrationNumber || "Not Provided"
+    }</p>
+        <p><strong>Avg Orders/Month:</strong> ${averageOrdersPerMonth || "Not Provided"
+    }</p>
       </div>
 
 
@@ -451,15 +449,57 @@ export const highRiskOrderNotificationTemplate = ({
   customerEmail,
   riskReasons,
   orderLink,
+  includeOrderDetails,     // NEW
+  includeRecommendedAction,  // NEW
+  includeWavierLink,         // NEW
+  orderDetails,              // NEW: Data for Order Details (e.g., items, address)
+  recommendedAction,         
+  waiverLink,                
 }: {
   adminName: string;
   orderName: string;
   customerEmail: string;
   riskReasons: string[];
   orderLink: string;
+  // New Fields
+  includeOrderDetails?: boolean;
+  includeRecommendedAction?: boolean;
+  includeWavierLink?: boolean;
+  orderDetails?: string; // e.g., "Customer: John Doe, Items: Product A (1), Product B (2), Address: 123 Main St"
+  recommendedAction?: string; // e.g., "Fulfilment Hold (Manual Review)"
+  waiverLink?: string; 
 }) => {
   const primaryColor = "#D32F2F";
   const accentColor = "#FFC107";
+  const buttonColor = "#255BE9";
+
+  // --- Dynamic Content Sections ---
+
+  // Order Details Section
+  const orderDetailsSection =
+    includeOrderDetails && orderDetails
+      ? `
+        <h3>Order Details</h3>
+        <p>${orderDetails.replace(/\n/g, '<br>')}</p>
+      `
+      : '';
+
+  // Recommended Action Section
+  const recommendedActionSection =
+    includeRecommendedAction && recommendedAction
+      ? `
+        <h3>Recommended Action</h3>
+        <p>The primary action set in your settings is: <strong>${recommendedAction}</strong>.</p>
+      `
+      : '';
+
+  // Waiver Link Button (Conditionally included in the button container)
+  const waiverButton =
+    includeWavierLink && waiverLink
+      ? `
+        <a href="${waiverLink}" style="background-color: ${buttonColor}; color: #ffffff; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-left: 10px;">Send Waiver</a>
+      `
+      : '';
 
   return `
 <!DOCTYPE html>
@@ -501,13 +541,13 @@ export const highRiskOrderNotificationTemplate = ({
         .content h2 {
             color: ${primaryColor};
         }
-        .order-details {
+        .order-summary {
             background-color: #fff9c4; /* Light yellow background */
             border-left: 4px solid ${accentColor};
             padding: 15px;
             margin: 20px 0;
         }
-        .order-details p {
+        .order-summary p {
             margin: 5px 0;
             font-size: 16px;
         }
@@ -522,9 +562,10 @@ export const highRiskOrderNotificationTemplate = ({
         .button-container {
             text-align: center;
             margin-top: 30px;
+            margin-bottom: 20px;
         }
         .button {
-            background-color: #255BE9; /* Using the original primary blue for the button */
+            background-color: ${buttonColor};
             color: #ffffff;
             padding: 12px 25px;
             text-decoration: none;
@@ -549,20 +590,25 @@ export const highRiskOrderNotificationTemplate = ({
             <h2>Hello ${adminName},</h2>
             <p>A new order has been automatically flagged as high-risk and requires your immediate attention.</p>
             
-            <div class="order-details">
+            <div class="order-summary">
                 <p><strong>Order Number:</strong> ${orderName}</p>
                 <p><strong>Customer Email:</strong> ${customerEmail}</p>
             </div>
+
+            ${orderDetailsSection}
 
             <p><strong>Reason(s) for Flagging:</strong></p>
             <ul class="reasons-list">
                 ${riskReasons.map((reason) => `<li>${reason}</li>`).join("")}
             </ul>
 
+            ${recommendedActionSection}
+
             <p>Please review the order details promptly to determine the appropriate action (e.g., fulfill, contact customer, or cancel).</p>
 
             <div class="button-container">
                 <a href="${orderLink}" class="button">Review Order Now</a>
+                ${waiverButton}
             </div>
         </div>
         <div class="footer">
