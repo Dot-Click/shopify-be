@@ -27,6 +27,12 @@ export const createSettings = async (
       photoOnDelivery,
       sendCancellationEmail,
       includeWavierLink,
+
+      emailNotificationsEnabled,
+      notificationEmail,
+      includeOrderDetails,
+      includeReasonForFlag,
+      includeRecommendedAction,
     } = req.body;
 
     console.log(req.body);
@@ -51,6 +57,14 @@ export const createSettings = async (
           photoOnDelivery,
           sendCancellationEmail,
           includeWavierLink,
+
+          emailNotificationsEnabled,
+          notificationEmail,
+          includeOrderDetails,
+          includeReasonForFlag,
+          includeRecommendedAction,
+
+
           updatedAt: new Date(),
         })
         .where(eq(settings.storeId, storeId as string));
@@ -68,6 +82,14 @@ export const createSettings = async (
         photoOnDelivery,
         sendCancellationEmail,
         includeWavierLink,
+
+        emailNotificationsEnabled,
+        notificationEmail,
+        includeOrderDetails,
+        includeReasonForFlag,
+        includeRecommendedAction,
+
+
         createdAt: new Date(),
         updatedAt: new Date(),
       });
