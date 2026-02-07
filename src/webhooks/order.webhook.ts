@@ -85,11 +85,7 @@ export const ordersCreateWebhook = async (
       accessToken: storeAccessToken as string,
     });
 
-    console.log("Risk check result:", riskResult);
-
     const highRiskOrder = riskResult.orders.find((o) => o.flagged === true);
-
-    console.log("High-risk order found:", highRiskOrder);
 
     // --- Conditional Email Sending Based on Settings ---
     if (highRiskOrder && emailNotificationsEnabled) {

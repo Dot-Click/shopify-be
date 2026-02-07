@@ -32,6 +32,7 @@ export const sendEmail = async (
             new BrevoTransport({ apiKey })
         );
         // Send email
+        console.log("Sending email with options:", options);
         const data = await transport.sendMail({
             from:
                 options.from ||
