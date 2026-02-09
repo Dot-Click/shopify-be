@@ -1,10 +1,11 @@
 import { Request, Response } from "express";
 import axios from "axios";
 import { database } from "@/configs/connection.config";
-import { customers, users, settings } from "@/schema/schema"; // <-- IMPORT settings schema
+import { customers, users, settings, notifications } from "@/schema/schema";
 import { eq } from "drizzle-orm";
 import { calculateRiskyOrders } from "@/service/risk.service";
-import { highRiskOrderNotificationTemplate } from "@/utils/sendgrid.util"; // ADJUST PATH
+import { sendPushToStore } from "@/service/push.service";
+import { highRiskOrderNotificationTemplate } from "@/utils/sendgrid.util";
 import { sendEmail } from "@/configs/brevo.config";
 
 export const ordersCreateWebhook = async (
@@ -125,6 +126,33 @@ export const ordersCreateWebhook = async (
         }
       } catch (emailError) {
         console.error("Error sending high-risk email via Brevo:", emailError);
+      }
+    }
+
+    // Create in-app notification and send push for high-risk orders
+    if (highRiskOrder) {
+      const notificationPayload = {
+        storeId: storeId as string,
+        customerId: customerRecord.id,
+        type: "HIGH_RISK_ORDER",
+        title: `High-Risk Order: ${order.name}`,
+        message: `Risk detected for order ${order.name} (${customerEmail}).`,
+        meta: {
+          orderId: `gid://shopify/Order/${order.id}`,
+          orderName: order.name,
+          reasons: highRiskOrder.reasons,
+        },
+      };
+      const [inserted] = await database
+        .insert(notifications)
+        .values(notificationPayload)
+        .returning({ id: notifications.id });
+      if (inserted?.id) {
+        sendPushToStore(storeId as string, {
+          title: notificationPayload.title,
+          message: notificationPayload.message,
+          notificationId: inserted.id,
+        }).catch(() => {});
       }
     }
     // ----------------------------------------------------

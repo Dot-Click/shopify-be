@@ -222,6 +222,17 @@ export const notifications = pgTable("notifications", {
   ...timeStamps,
 });
 
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: uuid("id").primaryKey(),
+  storeId: text("store_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  endpoint: text("endpoint").notNull(),
+  p256dhKey: text("p256dh_key").notNull(),
+  authKey: text("auth_key").notNull(),
+  ...timeStamps,
+});
+
 export const activities = pgTable("activities", {
   id: varchar("id", { length: 128 })
     .$defaultFn(() => createId())
