@@ -32,12 +32,9 @@ export const sendEmail = async (
             new BrevoTransport({ apiKey })
         );
         // Send email
-        console.log("Sending email with options:", options);
+        console.log("Sending email with options:", options.from);
         const data = await transport.sendMail({
-            from:
-                options.from ||
-                `"Proactive" <${process.env.BREVO_SENDER_EMAIL || "noreply@proactive.com"
-                }>`,
+            from: process.env.BREVO_EMAIL,
             to: options.to,
             subject: options.subject,
             html: options.htmlContent,
