@@ -31,10 +31,13 @@ export const sendEmail = async (
         const transport = nodemailer.createTransport(
             new BrevoTransport({ apiKey })
         );
+        
         // Send email
-        console.log("Sending email with options:", options.from);
+        console.log("Brevo Email:", env.BREVO_EMAIL);
+        console.log("PROCESS ENV EMAIL:", process.env.BREVO_EMAIL);
+
         const data = await transport.sendMail({
-            from: process.env.BREVO_EMAIL,
+            from: env.BREVO_EMAIL,
             to: options.to,
             subject: options.subject,
             html: options.htmlContent,
