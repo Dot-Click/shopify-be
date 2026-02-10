@@ -38,9 +38,8 @@ export const refundsCreateWebhook = async (req: Request, res: Response) => {
       customerId: customerRecord?.id ?? null,
       type: "REFUND",
       title: `Refund detected for ${orderRecord.name}`,
-      message: `${customerRecord?.name || "Customer"} refunded order ${
-        orderRecord.name
-      }`,
+      message: `${customerRecord?.name || "Customer"} refunded order ${orderRecord.name
+        }`,
       meta: {
         orderId: orderRecord.id,
         orderName: orderRecord.name,
@@ -73,7 +72,7 @@ export const refundsCreateWebhook = async (req: Request, res: Response) => {
         title: notificationData.title,
         message: notificationData.message,
         notificationId: inserted.id,
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     res.status(status.OK).send("Refund webhook processed");

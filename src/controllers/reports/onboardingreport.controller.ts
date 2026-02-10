@@ -27,10 +27,19 @@ export const OnboardingReportController = async (_req: Request, res: Response) =
             // is also valid but the Drizzle helper 'gte' is often preferred.
 
         // 2. Store Count Grouped by Plan
+        // If plan is "free", use package field instead to show the actual plan name
+        const planExpression = sql<string>`CASE 
+            WHEN ${users.plan} = 'free' THEN COALESCE(${users.package}, 'free')
+            ELSE COALESCE(${users.plan}, 'Unassigned/Legacy')
+        END`;
+        
         const storesByPlan = await database
-            .select({ plan: users.plan, count: count().as("count") })
+            .select({ 
+                plan: planExpression.as("plan"),
+                count: count().as("count") 
+            })
             .from(users)
-            .groupBy(users.plan)
+            .groupBy(planExpression)
             // Fix for PostgreSQL: use double quotes for the alias in ORDER BY
             .orderBy(desc(sql.raw('"count"'))); 
 

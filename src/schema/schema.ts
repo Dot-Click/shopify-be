@@ -193,6 +193,9 @@ export const settings = pgTable("settings", {
   includeReasonForFlag: boolean("include_reason_for_flag").default(true),
   includeRecommendedAction: boolean("include_recommended_action").default(true),
 
+  exclusionList: text("exclusion_list"), // JSON string of exclusion items
+  actionDelayHours: integer("action_delay_hours").default(0), // Hours to delay automatic cancellations
+
   ...timeStamps,
 });
 

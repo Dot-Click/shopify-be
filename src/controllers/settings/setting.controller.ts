@@ -33,6 +33,9 @@ export const createSettings = async (
       includeOrderDetails,
       includeReasonForFlag,
       includeRecommendedAction,
+
+      exclusionList,
+      actionDelayHours,
     } = req.body;
 
     console.log(req.body);
@@ -64,6 +67,8 @@ export const createSettings = async (
           includeReasonForFlag,
           includeRecommendedAction,
 
+          exclusionList,
+          actionDelayHours,
 
           updatedAt: new Date(),
         })
@@ -89,6 +94,8 @@ export const createSettings = async (
         includeReasonForFlag,
         includeRecommendedAction,
 
+        exclusionList,
+        actionDelayHours,
 
         createdAt: new Date(),
         updatedAt: new Date(),
