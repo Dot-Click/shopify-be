@@ -47,6 +47,9 @@ export const ordersCreateWebhook = async (
 
     const storeUrl = store.shopify_url;
     const storeAccessToken = store.shopify_access_token;
+
+    console.log("storeUrl", storeUrl);
+    console.log("storeAccessToken", storeAccessToken);
     
     // --- NEW: Fetch Notification Settings ---
     const [storeSettings] = await database
@@ -159,7 +162,7 @@ export const ordersCreateWebhook = async (
 
     res.status(200).send("✅ Webhook processed with risk check");
   } catch (error: any) {
-    console.error("❌ Error processing webhook:", error);
+    console.log("error", error);
     res.status(500).send("❌ Error processing webhook");
   }
 };
