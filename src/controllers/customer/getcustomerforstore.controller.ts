@@ -9,6 +9,28 @@ import { calculateCustomerRisk } from "@/service/riskycustomer.service";
 import { logActivity } from "@/service/logactivity.service";
 import { decrypt } from "@/service/encryption.service";
 
+/** Check if customer email is in the store's exclusion list (Additional Configuration). */
+function isEmailExcluded(
+  exclusionList: string | null | undefined,
+  customerEmail: string | null | undefined
+): boolean {
+  if (!exclusionList || !customerEmail) return false;
+  try {
+    const exclusions = Array.isArray(exclusionList)
+      ? exclusionList
+      : JSON.parse(exclusionList || "[]");
+    if (!Array.isArray(exclusions) || exclusions.length === 0) return false;
+    const emailLower = customerEmail.toLowerCase().trim();
+    return exclusions.some(
+      (item: any) =>
+        item.type === "customer" &&
+        (item.value || "").toLowerCase().trim() === emailLower
+    );
+  } catch (error) {
+    return false;
+  }
+}
+
 /**
  * This is to fetch all the customers from the Shopfiy of logged in user.
  */
@@ -43,6 +65,7 @@ export const getCustomerRefundsAcrossStores = async (
     }
 
     const riskSettings = settingsResult[0];
+    const exclusionList = riskSettings?.exclusionList ?? null;
 
     const query = `
       {
@@ -141,6 +164,15 @@ export const getCustomerRefundsAcrossStores = async (
       }
 
       const customerEmail = node.email ?? "N/A";
+
+      // If customer email is in Additional Configuration exclusion list, do not treat as risky
+      if (isEmailExcluded(exclusionList, node.email)) {
+        riskProfile = {
+          isFlagged: false,
+          riskLevel: 0,
+          riskReason: "In exclusion list",
+        };
+      }
 
       let flaggedStoresCount = 0;
       if (customerEmail !== "N/A") {

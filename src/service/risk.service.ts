@@ -3,6 +3,35 @@ import { customers, orders, settings, users } from "@/schema/schema";
 import { eq, sql, and } from "drizzle-orm";
 import axios from "axios";
 
+interface ExclusionItem {
+  id: string;
+  type: "customer" | "address";
+  value: string;
+}
+
+/** Check if customer email is in the exclusion list (email only, no order/address logic). */
+function isEmailExcluded(
+  exclusionList: string | null | undefined,
+  customerEmail: string | null | undefined
+): boolean {
+  if (!exclusionList || !customerEmail) return false;
+  try {
+    const exclusions: ExclusionItem[] = Array.isArray(exclusionList)
+      ? exclusionList
+      : JSON.parse(exclusionList || "[]");
+    if (!Array.isArray(exclusions) || exclusions.length === 0) return false;
+    const emailLower = customerEmail.toLowerCase().trim();
+    return exclusions.some(
+      (item) =>
+        item.type === "customer" &&
+        item.value.toLowerCase().trim() === emailLower
+    );
+  } catch (error) {
+    console.error("Error parsing exclusion list:", error);
+    return false;
+  }
+}
+
 export const calculateRiskyOrders = async ({
   storeId,
   customerId,
@@ -22,7 +51,7 @@ export const calculateRiskyOrders = async ({
 
   if (!setting) throw new Error("Settings not found");
 
-  const { lossRateThreshold } = setting;
+  const { lossRateThreshold, exclusionList } = setting;
 
   // ---- Load customer ----
   const [customerRecord] = await database
@@ -40,6 +69,9 @@ export const calculateRiskyOrders = async ({
     totalOrders && totalOrders > 0
       ? (Number(totalRefunded) / totalOrders) * 100
       : 0;
+
+  // If customer email is in exclusion list, do not treat as risky (orders still appear, none flagged)
+  const customerExcluded = isEmailExcluded(exclusionList, email);
 
   const crossStoreQuery = await database
     .select({ storeId: customers.id })
@@ -63,7 +95,7 @@ export const calculateRiskyOrders = async ({
   const customerRiskReasons: string[] = [];
   let isNowRisky = false;
 
-  if (refundRate > (lossRateThreshold ?? 0)) {
+  if (!customerExcluded && refundRate > (lossRateThreshold ?? 0)) {
     isNowRisky = true;
     customerRiskReasons.push(
       `Refund rate ${refundRate.toFixed(
@@ -159,7 +191,7 @@ export const calculateRiskyOrders = async ({
 
     const orderCreatedDate = new Date(ord.createdAt).getTime();
     const orderCreatedDateVal = new Date(ord.createdAt);
-    const isRiskyCustomer = isNowRisky || !!effectiveRiskySince;
+    const isRiskyCustomer = !customerExcluded && (isNowRisky || !!effectiveRiskySince);
 
     if (
       isRiskyCustomer &&
@@ -224,7 +256,7 @@ export const calculateRiskyOrders = async ({
         customerEmail: customerData.email,
         customerPhone: customerData.phone,
         riskLevel: ord.riskLevel,
-        flagged,
+        flagged: customerExcluded ? false : flagged,
         manualFlag: null,
         createdAt: orderCreatedDateVal,
         updatedAt: new Date(),
@@ -235,7 +267,7 @@ export const calculateRiskyOrders = async ({
     orderResults.push({
       ...ord,
       totalAmount,
-      flagged,
+      flagged: customerExcluded ? false : flagged,
       manualFlag: null,
       reasons,
       refundsTotal,

@@ -66,7 +66,6 @@ export const ordersCreateWebhook = async (
     const includeWavierLink = storeSettings?.includeWavierLink ?? false;
     // ----------------------------------------
 
-
     if (customerRecord?.tags?.includes("BLOCKED")) {
       await axios.post(
         `${storeUrl}/admin/api/2025-07/orders/${order.id}/cancel.json`,
