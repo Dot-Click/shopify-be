@@ -15,7 +15,18 @@ export const ordersCreateWebhook = async (
   try {
     const order = req.body;
     const customerEmail = order.customer?.email;
-    const customerId = `gid://shopify/Customer/${order.customer?.id}`;
+    
+    // Ensure customerId is a proper Global ID
+    let rawCustomerId = order.customer?.id;
+    let customerId = "";
+    if (rawCustomerId) {
+      customerId = String(rawCustomerId).startsWith("gid://shopify/Customer/")
+        ? String(rawCustomerId)
+        : `gid://shopify/Customer/${rawCustomerId}`;
+    }
+
+    console.log("Processing webhook for order:", order.name);
+    console.log("Customer ID used for risk analysis:", customerId);
 
     if (!customerEmail || !customerId) {
       res.status(400).send("Missing customer info");

@@ -160,20 +160,109 @@ export const calculateRiskyOrders = async ({
     }
   `;
 
-  const response = await axios.post(
-    `${storeUrl}/admin/api/2025-07/graphql.json`,
-    { query, variables: { customerId } },
-    {
-      headers: {
-        "X-Shopify-Access-Token": accessToken,
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  let response;
+  try {
+    response = await axios.post(
+      `${storeUrl}/admin/api/2024-07/graphql.json`,
+      { query, variables: { customerId } },
+      {
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  } catch (axiosError: any) {
+    console.error("Axios error fetching from Shopify:", axiosError.response?.data || axiosError.message);
+    throw axiosError;
+  }
 
-  const customerData = response.data.data.customer;
-  if (!customerData)
-    throw new Error("Failed to fetch customer orders from Shopify");
+  if (response.data.errors) {
+    console.error("Shopify GraphQL Errors:", JSON.stringify(response.data.errors, null, 2));
+  }
+
+  let customerData = response.data.data?.customer;
+
+  // Fallback: If searching by ID failed, try searching by email
+  if (!customerData && email) {
+    console.log(`Customer not found by ID (${customerId}). Attempting fallback search by email: ${email}`);
+    const searchQuery = `
+      query($emailQuery: String!) {
+        customers(first: 1, query: $emailQuery) {
+          edges {
+            node {
+              id
+              displayName
+              email
+              phone
+              orders(first: 100) {
+                edges {
+                  node {
+                    id
+                    name
+                    createdAt
+                    totalPriceSet {
+                      shopMoney {
+                        amount
+                        currencyCode
+                      }
+                    }
+                    riskLevel
+                    refunds(first: 5) {
+                      id
+                      totalRefundedSet {
+                        shopMoney {
+                          amount
+                          currencyCode
+                        }
+                      }
+                    }
+                    fulfillmentOrders(first: 5) {
+                      nodes {
+                        id
+                        status
+                        requestStatus
+                        fulfillBy
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const searchResponse = await axios.post(
+        `${storeUrl}/admin/api/2024-07/graphql.json`,
+        { 
+          query: searchQuery, 
+          variables: { emailQuery: `email:${email}` } 
+        },
+        {
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const firstMatch = searchResponse.data.data?.customers?.edges?.[0]?.node;
+      if (firstMatch) {
+        console.log(`Found customer match via email search. New ID: ${firstMatch.id}`);
+        customerData = firstMatch;
+      }
+    } catch (searchError: any) {
+      console.error("Error during fallback email search:", searchError.message);
+    }
+  }
+
+  if (!customerData) {
+    console.error("Shopify Response Data (Final Failure):", JSON.stringify(response.data, null, 2));
+    throw new Error(`Failed to fetch customer orders from Shopify. Customer ID: ${customerId}, Email: ${email}`);
+  }
 
   const shopifyOrders = customerData.orders.edges.map((edge: any) => edge.node);
 
