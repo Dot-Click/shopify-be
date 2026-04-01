@@ -74,9 +74,17 @@ export const getCustomerRefundsAcrossStores = async (
             node {
               id
               displayName
+              firstName
+              lastName
               email
               phone
               tags
+              defaultAddress {
+                address1
+                address2
+                zip
+                city
+              }
               orders(first: 50) {
                 edges {
                   node {
@@ -198,11 +206,16 @@ export const getCustomerRefundsAcrossStores = async (
           flagged: riskProfile.isFlagged,
         },
       });
+
       const customerDataToUpsert = {
         id: node.id,
         name: node.displayName ?? "N/A",
+        firstName: node.firstName ?? "",
+        surname: node.lastName ?? "",
         email: node.email ?? "N/A",
         phone: node.phone ?? "N/A",
+        address: node.defaultAddress ? `${node.defaultAddress.address1} ${node.defaultAddress.address2 || ''}, ${node.defaultAddress.city || ''}`.trim() : "",
+        postCode: node.defaultAddress?.zip ?? "",
         totalRefunded: String(totalRefunds),
         ip: lastKnownIp,
         totalOrders: totalOrders,
@@ -212,7 +225,7 @@ export const getCustomerRefundsAcrossStores = async (
         refundsFromStores: refundedStores.size,
         flaggedStoresCount,
         storeId: storeId,
-        tags: Array.isArray(node.tags) ? node.tags.join(",") : "",
+        tags: Array.isArray(node.tags) ? node.tags.join(",") : (node.tags || ""),
       };
 
       const promise = database

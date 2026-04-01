@@ -6,7 +6,7 @@ import { logger } from "@/utils/logger.util";
 import { eq } from "drizzle-orm";
 import { Request, Response } from "express";
 import formidable from "formidable";
-import { status } from "http-status";
+import status from "http-status";
 
 export const fetchStoresController = async (
   _req: Request,
@@ -50,7 +50,7 @@ export const updateStoreStatusController = async (
     });
 
     if (!store) {
-      res.status(status.NOT_FOUND).json({
+      res.status(status.BAD_REQUEST).json({
         message: "Store not found.",
       });
       return;
@@ -103,5 +103,42 @@ export const imageUpload = async (req: Request, res: Response) => {
     console.error("Upload error:", err);
     res.status(500).json({ error: "Upload failed" });
     return;
+  }
+};
+
+export const incrementSearchCount = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(status.UNAUTHORIZED).json({ message: "Store not identified." });
+      return;
+    }
+
+    const store = await database.query.users.findFirst({
+      where: eq(users.id, userId),
+    });
+
+    if (!store) {
+      res.status(status.BAD_REQUEST).json({ message: "Store not found." });
+      return;
+    }
+
+    const currentCount = store.totalSearches || 0;
+    await database
+      .update(users)
+      .set({ totalSearches: currentCount + 1 })
+      .where(eq(users.id, userId));
+
+    res.status(status.OK).json({
+      message: "Search count incremented successfully",
+    });
+  } catch (error) {
+    logger.error("Error in incrementSearchCount:", error);
+    res.status(status.INTERNAL_SERVER_ERROR).json({
+      message: "An error occurred while incrementing search count.",
+    });
   }
 };

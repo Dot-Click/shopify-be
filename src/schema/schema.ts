@@ -56,13 +56,18 @@ export const users = pgTable("users", {
   shopify_api_key: text("shopify_api_key"),
   shopify_access_token: text("shopify_access_token"),
   shopify_url: text("shopify_url"),
+  totalSearches: integer("total_searches").default(0),
 });
 
 export const customers = pgTable("customers", {
   id: text("id").primaryKey(),
   name: text("name"),
+  firstName: text("first_name"),
+  surname: text("surname"),
   email: text("email"),
   phone: text("phone"),
+  address: text("address"),
+  postCode: text("post_code"),
   totalRefunded: numeric("total_refunded", { precision: 12, scale: 2 }),
   totalOrders: integer("total_orders"),
   riskLevel: integer("risk_level"),

@@ -24,20 +24,26 @@ export const getCustomersForAdminDashboard = async (
         customerMap[email] = {
           id: c.id,
           displayName: c.name,
+          firstName: c.firstName,
+          surname: c.surname,
           email,
           phone: c.phone,
           lastKnownIp: c.ip,
+          address: c.address,
+          postCode: c.postCode,
           totalOrders: 0,
           totalRefunds: 0,
           storesRefunded: new Set<string>(),
           riskLevel: 0,
           reasons: [] as string[],
           storeId: c.storeId,
+          createdAt: c.createdAt,
+          blocked: c.blocked,
         };
       }
 
-      customerMap[email].totalOrders += c.totalOrders;
-      customerMap[email].totalRefunds += Number(c.totalRefunded);
+      customerMap[email].totalOrders += Number(c.totalOrders || 0);
+      customerMap[email].totalRefunds += Number(c.totalRefunded || 0);
 
       const totalRefunded = c.totalRefunded ? Number(c.totalRefunded) : 0;
 
@@ -66,9 +72,13 @@ export const getCustomersForAdminDashboard = async (
     const results = Object.values(customerMap).map((c: any) => ({
       id: c.id,
       displayName: c.displayName,
+      firstName: c.firstName,
+      surname: c.surname,
       email: c.email,
       phone: c.phone ?? null,
       lastKnownIp: c.lastKnownIp ?? null,
+      address: c.address,
+      postCode: c.postCode,
       totalOrders: c.totalOrders,
       totalRefunds: c.totalRefunds,
       riskLevel: c.riskLevel,
@@ -76,6 +86,8 @@ export const getCustomersForAdminDashboard = async (
       reasons: c.reasons,
       storeId: c.storeId,
       flaggedStoresCount: c.flaggedStoresCount,
+      createdAt: c.createdAt,
+      blocked: c.blocked,
     }));
 
     res.status(status.OK).json(results);
