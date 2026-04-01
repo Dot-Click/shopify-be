@@ -51,6 +51,8 @@ export const ordersCreateWebhook = async (
         )
       );
 
+    console.log("customerRecord", customerRecord);
+
     if (!customerRecord) {
       console.error(`Customer ${customerEmail} not found in DB for store ${shopDomain}`);
       // Optional: Auto-create customer if missing, but for now we follow existing logic
