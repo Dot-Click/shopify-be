@@ -6,6 +6,8 @@ A robust, feature-rich Express.js backend template built with TypeScript, design
 
 - **TypeScript Support**: Fully typed codebase for better developer experience and code quality
 
+- **API Documentation**: [Detailed API Reference and Application Flow](API_REFERENCE.md)
+
 - **Authentication**: Complete authentication system using Better-Auth
 
 - Email/Password authentication

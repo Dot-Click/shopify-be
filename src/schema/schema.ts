@@ -192,6 +192,7 @@ export const settings = pgTable("settings", {
   includeOrderDetails: boolean("include_order_details").default(true),
   includeReasonForFlag: boolean("include_reason_for_flag").default(true),
   includeRecommendedAction: boolean("include_recommended_action").default(true),
+  autoHoldRiskyOrders: boolean("auto_hold_risky_orders").default(false),
 
   exclusionList: text("exclusion_list"), // JSON string of exclusion items
   actionDelayHours: integer("action_delay_hours").default(0), // Hours to delay automatic cancellations

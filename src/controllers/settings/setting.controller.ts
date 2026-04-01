@@ -9,7 +9,7 @@ export const createSettings = async (
   res: Response
 ): Promise<void> => {
   try {
-    const storeId = req.user?.id;
+    const storeId = (req as any).user?.id;
 
     if (!storeId) {
       res.status(status.BAD_REQUEST).json({ message: "Store ID is required" });
@@ -33,6 +33,7 @@ export const createSettings = async (
       includeOrderDetails,
       includeReasonForFlag,
       includeRecommendedAction,
+      autoHoldRiskyOrders,
 
       exclusionList,
       actionDelayHours,
@@ -60,6 +61,7 @@ export const createSettings = async (
           photoOnDelivery,
           sendCancellationEmail,
           includeWavierLink,
+          autoHoldRiskyOrders,
 
           emailNotificationsEnabled,
           notificationEmail,
@@ -87,6 +89,7 @@ export const createSettings = async (
         photoOnDelivery,
         sendCancellationEmail,
         includeWavierLink,
+        autoHoldRiskyOrders,
 
         emailNotificationsEnabled,
         notificationEmail,

@@ -58,18 +58,26 @@ export const ordersCreateWebhook = async (
       .where(eq(settings.storeId, storeId as string));
 
     // Fallback to defaults if no settings exist (shouldn't happen if properly seeded)
-    const emailNotificationsEnabled = storeSettings?.emailNotificationsEnabled ?? true;
+    const emailNotificationsEnabled =
+      storeSettings?.emailNotificationsEnabled ?? true;
     const notificationEmail = storeSettings?.notificationEmail || store.email; // Use store.email as a final fallback
     const includeReasonForFlag = storeSettings?.includeReasonForFlag ?? true;
     const includeOrderDetails = storeSettings?.includeOrderDetails ?? true;
-    const includeRecommendedAction = storeSettings?.includeRecommendedAction ?? true;
+    const includeRecommendedAction =
+      storeSettings?.includeRecommendedAction ?? true;
     const includeWavierLink = storeSettings?.includeWavierLink ?? false;
+    const autoHoldRiskyOrders = storeSettings?.autoHoldRiskyOrders ?? false;
+    const primaryAction = storeSettings?.primaryAction || "hold"; // Default to hold
     // ----------------------------------------
 
     if (customerRecord?.tags?.includes("BLOCKED")) {
       await axios.post(
         `${storeUrl}/admin/api/2025-07/orders/${order.id}/cancel.json`,
-        {},
+        {
+          reason: "declined", // Or "fraud"
+          email: true,
+          note: "Order cancelled because the customer is on the blocked list in eComProtect.",
+        },
         {
           headers: {
             "X-Shopify-Access-Token": storeAccessToken,
@@ -90,15 +98,95 @@ export const ordersCreateWebhook = async (
 
     const highRiskOrder = riskResult.orders.find((o) => o.flagged === true);
 
+    // --- Action: Automatic Fulfillment Hold or Cancellation (Risky Orders) ---
+    if (highRiskOrder && autoHoldRiskyOrders) {
+      if (primaryAction === "hold") {
+        try {
+          console.log(`Attempting to hold fulfillment for risky order: ${order.id}`);
+
+          // 1. Fetch fulfillment orders for the order
+          const fulfillmentOrdersResponse = await axios.get(
+            `${storeUrl}/admin/api/2025-07/orders/${order.id}/fulfillment_orders.json`,
+            {
+              headers: {
+                "X-Shopify-Access-Token": storeAccessToken,
+              },
+            }
+          );
+
+          const openFulfillmentOrders =
+            fulfillmentOrdersResponse.data.fulfillment_orders.filter(
+              (fo: any) => fo.status === "open"
+            );
+
+          console.log(
+            `Found ${openFulfillmentOrders.length} open fulfillment orders to hold.`
+          );
+
+          // 2. Put each fulfillment order on hold
+          for (const fo of openFulfillmentOrders) {
+            await axios.post(
+              `${storeUrl}/admin/api/2025-07/fulfillment_orders/${fo.id}/hold.json`,
+              {
+                fulfillment_hold: {
+                  reason: "other",
+                  reason_notes: `High-risk order detected by eComProtect. Reasons: ${highRiskOrder.reasons.join(", ")}`,
+                },
+              },
+              {
+                headers: {
+                  "X-Shopify-Access-Token": storeAccessToken,
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+            console.log(`Fulfillment order ${fo.id} placed on hold.`);
+          }
+        } catch (holdError: any) {
+          console.error(
+            "Error placing fulfillment on hold:",
+            holdError?.response?.data || holdError.message
+          );
+        }
+      } else if (primaryAction === "auto_cancel") {
+        try {
+          console.log(`Attempting to automatically cancel risky order: ${order.id}`);
+          await axios.post(
+            `${storeUrl}/admin/api/2025-07/orders/${order.id}/cancel.json`,
+            {
+              reason: "fraud",
+              email: true,
+              note: `Automatically cancelled by eComProtect due to high risk. Reasons: ${highRiskOrder.reasons.join(", ")}`,
+            },
+            {
+              headers: {
+                "X-Shopify-Access-Token": storeAccessToken,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+          console.log(`Order ${order.id} automatically cancelled.`);
+        } catch (cancelError: any) {
+          console.error(
+            "Error automatically cancelling order:",
+            cancelError?.response?.data || cancelError.message
+          );
+        }
+      }
+    }
+    // ---------------------------------------------------------
+
     // --- Conditional Email Sending Based on Settings ---
     if (highRiskOrder && emailNotificationsEnabled) {
       const emailSubject = `High-Risk Order Alert: ${order.name}`;
       const orderLink = `${storeUrl}/admin/orders/${order.id}`;
 
       // Prepare data for the template, now checking settings
-      const reasons = includeReasonForFlag ? highRiskOrder.reasons : ['Risk detected. Please check the order details.'];
-      
-      // NOTE: You'll need to update your highRiskOrderNotificationTemplate 
+      const reasons = includeReasonForFlag
+        ? highRiskOrder.reasons
+        : ["Risk detected. Please check the order details."];
+
+      // NOTE: You'll need to update your highRiskOrderNotificationTemplate
       // to accept these new options and conditionally render sections.
       const emailHtml = highRiskOrderNotificationTemplate({
         adminName: store.name || "Admin",
@@ -118,13 +206,17 @@ export const ordersCreateWebhook = async (
         const emailSent = await sendEmail({
           to: notificationEmail, // Use the configured notification email
           subject: emailSubject,
-          htmlContent: emailHtml
+          htmlContent: emailHtml,
         });
 
         if (emailSent) {
-          console.log(`Successfully sent high-risk alert email to ${notificationEmail} via Brevo.`);
+          console.log(
+            `Successfully sent high-risk alert email to ${notificationEmail} via Brevo.`
+          );
         } else {
-          console.error(`Failed to send high-risk alert email to ${notificationEmail}.`);
+          console.error(
+            `Failed to send high-risk alert email to ${notificationEmail}.`
+          );
         }
       } catch (emailError) {
         console.error("Error sending high-risk email via Brevo:", emailError);
