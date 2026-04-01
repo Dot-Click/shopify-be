@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import axios from "axios";
 import { database } from "@/configs/connection.config";
 import { customers, users, settings, notifications } from "@/schema/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { calculateRiskyOrders } from "@/service/risk.service";
 import { sendPushToStore } from "@/service/push.service";
 import { highRiskOrderNotificationTemplate } from "@/utils/sendgrid.util";
@@ -15,7 +15,49 @@ export const ordersCreateWebhook = async (
   try {
     const order = req.body;
     const customerEmail = order.customer?.email;
-    
+    const shopDomain = req.headers["x-shopify-shop-domain"] as string;
+
+    console.log(`Received webhook from shop: ${shopDomain} for order: ${order.name}`);
+
+    if (!shopDomain) {
+      res.status(400).send("Missing shop domain header");
+      return;
+    }
+
+    // 1. Find the store owner (user) by shop domain
+    const [store] = await database
+      .select()
+      .from(users)
+      .where(eq(users.shopify_url, `https://${shopDomain}`));
+
+    if (!store) {
+      console.error(`Store not found in DB for domain: ${shopDomain}`);
+      res.status(404).send("Store not found");
+      return;
+    }
+
+    const storeId = store.id;
+    const storeUrl = store.shopify_url;
+    const storeAccessToken = store.shopify_access_token;
+
+    // 2. Find the customer for THIS specific store
+    const [customerRecord] = await database
+      .select()
+      .from(customers)
+      .where(
+        and(
+          eq(customers.email, customerEmail as string),
+          eq(customers.storeId, storeId as string)
+        )
+      );
+
+    if (!customerRecord) {
+      console.error(`Customer ${customerEmail} not found in DB for store ${shopDomain}`);
+      // Optional: Auto-create customer if missing, but for now we follow existing logic
+      res.status(404).send("Customer record not found for this store");
+      return;
+    }
+
     // Ensure customerId is a proper Global ID
     let rawCustomerId = order.customer?.id;
     let customerId = "";
@@ -25,39 +67,7 @@ export const ordersCreateWebhook = async (
         : `gid://shopify/Customer/${rawCustomerId}`;
     }
 
-    console.log("Processing webhook for order:", order.name);
-    console.log("Customer ID used for risk analysis:", customerId);
-
-    if (!customerEmail || !customerId) {
-      res.status(400).send("Missing customer info");
-      return;
-    }
-
-    const [customerRecord] = await database
-      .select()
-      .from(customers)
-      .where(eq(customers.email, customerEmail));
-
-    if (!customerRecord) {
-      console.error("No matching customer in DB for email:", customerEmail);
-      res.status(404).send("Customer record not found");
-      return; // Added return
-    }
-    const storeId = customerRecord.storeId;
-
-    const [store] = await database
-      .select()
-      .from(users)
-      .where(eq(users.id, storeId as string));
-      
-    // Defensive check
-    if (!store) {
-      res.status(404).send("Store owner not found");
-      return;
-    }
-
-    const storeUrl = store.shopify_url;
-    const storeAccessToken = store.shopify_access_token;
+    console.log("Customer GID for analysis:", customerId);
 
     console.log("storeUrl", storeUrl);
     console.log("storeAccessToken", storeAccessToken);
@@ -108,6 +118,25 @@ export const ordersCreateWebhook = async (
     });
 
     const highRiskOrder = riskResult.orders.find((o) => o.flagged === true);
+
+    // Sync Shopify ID if it changed (e.g., found via fallback)
+    if (riskResult.customer.id && riskResult.customer.id !== customerId) {
+      console.log(`Syncing corrected Shopify Customer ID to DB: ${riskResult.customer.id}`);
+      await database
+        .update(customers)
+        .set({ id: riskResult.customer.id })
+        .where(eq(customers.email, customerEmail));
+    }
+
+    console.log("Risk Analysis Result:", {
+      isFlagged: !!highRiskOrder,
+      reasons: highRiskOrder?.reasons || [],
+      settings: {
+        autoHoldRiskyOrders,
+        primaryAction,
+        emailNotificationsEnabled
+      }
+    });
 
     // --- Action: Automatic Fulfillment Hold or Cancellation (Risky Orders) ---
     if (highRiskOrder && autoHoldRiskyOrders) {
