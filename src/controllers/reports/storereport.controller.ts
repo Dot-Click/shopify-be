@@ -102,6 +102,7 @@ export const storeReportActivity = async (req: Request, res: Response) => {
             .as("ordersReviewed"),
 
         lastLoginDate: lastLoginSubquery.lastLoginDate,
+        totalSearches: users.totalSearches,
       })
       .from(users)
       .leftJoin(customers, eq(users.id, customers.storeId))
@@ -111,7 +112,8 @@ export const storeReportActivity = async (req: Request, res: Response) => {
         users.name,
         users.email,
         users.shopify_api_key,
-        lastLoginSubquery.lastLoginDate
+        lastLoginSubquery.lastLoginDate,
+        users.totalSearches
       )
       .orderBy(desc(sql.raw(`"ordersFlagged"`)));
 
@@ -147,6 +149,7 @@ export const storeReportActivity = async (req: Request, res: Response) => {
       ordersFlagged: store.ordersFlagged || 0,
       email: store.storeEmail || "N/A",
       apiKey: store.storeApiKey || "N/A",
+      searchesPerformed: store.totalSearches || 0,
       ordersReviewed: store.ordersReviewed || 0,
       lastLoginDate: store.lastLoginDate ? format(new Date(store.lastLoginDate), "yyyy-MM-dd HH:mm") : "N/A",
     }));
