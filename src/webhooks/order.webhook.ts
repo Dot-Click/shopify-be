@@ -116,7 +116,7 @@ export const ordersCreateWebhook = async (
     });
 
     // 5. Automation Actions
-    if (highRiskOrder && storeSettings?.autoHoldRiskyOrders) {
+    if (highRiskOrder) {
       if (storeSettings?.primaryAction === "hold") {
         try {
           console.log(`\u23f8\ufe0f Holding fulfillment for Order ${order.id}`);
