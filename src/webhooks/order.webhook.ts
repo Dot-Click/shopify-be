@@ -1,12 +1,12 @@
 import { Request, Response } from "express";
 import axios from "axios";
 import { database } from "@/configs/connection.config";
-import { customers, users, settings, notifications } from "@/schema/schema";
-import { and, eq } from "drizzle-orm";
+import { customers, settings, notifications } from "@/schema/schema";
+// import { and, eq } from "drizzle-orm";
 import { calculateRiskyOrders } from "@/service/risk.service";
-import { sendPushToStore } from "@/service/push.service";
 import { highRiskOrderNotificationTemplate } from "@/utils/sendgrid.util";
 import { sendEmail } from "@/configs/brevo.config";
+import { createId } from "@paralleldrive/cuid2";
 
 export const ordersCreateWebhook = async (
   req: Request,
@@ -17,285 +17,196 @@ export const ordersCreateWebhook = async (
     const customerEmail = order.customer?.email;
     const shopDomain = req.headers["x-shopify-shop-domain"] as string;
 
-    console.log(`Received webhook from shop: ${shopDomain} for order: ${order.name}`);
+    console.log(`\ud83d\udce9 Webhook from ${shopDomain} | Order: ${order.name}`);
 
     if (!shopDomain) {
       res.status(400).send("Missing shop domain header");
       return;
     }
 
-    // 1. Find the store owner (user) by shop domain
-    const [store] = await database
-      .select()
-      .from(users)
-      .where(eq(users.shopify_url, `https://${shopDomain}`));
+    if (!customerEmail) {
+      console.log("Skipping webhook: No customer email found in order payload.");
+      res.status(200).send("\u2705 Skipped (No Email)");
+      return;
+    }
+
+    // 1. Resolve Store & Auth
+    const store = await database.query.users.findFirst({
+      where: (u, { or, eq }) => or(
+        eq(u.shopify_url, `https://${shopDomain}`),
+        eq(u.shopify_url, shopDomain)
+      ),
+    });
 
     if (!store) {
-      console.error(`Store not found in DB for domain: ${shopDomain}`);
+      console.error(`\u274c Store ${shopDomain} not found in DB.`);
       res.status(404).send("Store not found");
       return;
     }
 
     const storeId = store.id;
-    const storeUrl = store.shopify_url;
+    const storeUrl = store.shopify_url?.startsWith("http") ? store.shopify_url : `https://${store.shopify_url}`;
     const storeAccessToken = store.shopify_access_token;
 
-    // 2. Find the customer for THIS specific store
-    const [customerRecord] = await database
-      .select()
-      .from(customers)
-      .where(
-        and(
-          eq(customers.email, customerEmail as string),
-          eq(customers.storeId, storeId as string)
-        )
-      );
+    // 2. Resolve Settings
+    let storeSettings = await database.query.settings.findFirst({
+      where: (s, { eq }) => eq(s.storeId, storeId),
+    });
 
-    console.log("customerRecord", customerRecord);
+    if (!storeSettings) {
+      console.log(`\u2699\ufe0f Initializing default settings for ${shopDomain}`);
+      const [newSettingsRecord] = await database.insert(settings).values({
+        storeId,
+        autoHoldRiskyOrders: true,
+        primaryAction: "hold",
+        notificationEmail: store.email,
+        updatedAt: new Date(),
+      } as any).returning();
+      storeSettings = newSettingsRecord as any;
+    }
+
+    // 3. Resolve Customer (Auto-Create if New)
+    let customerRecord = await database.query.customers.findFirst({
+      where: (c, { and, eq }) => and(
+        eq(c.email, customerEmail),
+        eq(c.storeId, storeId)
+      ),
+    });
 
     if (!customerRecord) {
-      console.error(`Customer ${customerEmail} not found in DB for store ${shopDomain}`);
-      // Optional: Auto-create customer if missing, but for now we follow existing logic
-      res.status(404).send("Customer record not found for this store");
-      return;
+      console.log(`\ud83d\udc64 Creating record for new customer ${customerEmail}`);
+      const shopifyId = order.customer?.id 
+        ? (String(order.customer.id).startsWith("gid://") ? order.customer.id : `gid://shopify/Customer/${order.customer.id}`)
+        : `gid://shopify/Customer/${createId()}`;
+
+      const [newCust] = await database.insert(customers).values({
+        id: shopifyId,
+        storeId,
+        email: customerEmail,
+        name: `${order.customer?.first_name || ""} ${order.customer?.last_name || ""}`.trim() || customerEmail.split('@')[0],
+        totalOrders: order.customer?.orders_count || 1,
+        totalRefunded: "0.00",
+        updatedAt: new Date(),
+      }).returning();
+      customerRecord = newCust;
     }
 
-    // Ensure customerId is a proper Global ID
-    let rawCustomerId = order.customer?.id;
-    let customerId = "";
-    if (rawCustomerId) {
-      customerId = String(rawCustomerId).startsWith("gid://shopify/Customer/")
-        ? String(rawCustomerId)
-        : `gid://shopify/Customer/${rawCustomerId}`;
-    }
+    const customerId = customerRecord.id.startsWith("gid://") ? customerRecord.id : `gid://shopify/Customer/${customerRecord.id}`;
 
-    console.log("Customer GID for analysis:", customerId);
-
-    console.log("storeUrl", storeUrl);
-    console.log("storeAccessToken", storeAccessToken);
-    
-    // --- NEW: Fetch Notification Settings ---
-    const [storeSettings] = await database
-      .select()
-      .from(settings)
-      .where(eq(settings.storeId, storeId as string));
-
-    // Fallback to defaults if no settings exist (shouldn't happen if properly seeded)
-    const emailNotificationsEnabled =
-      storeSettings?.emailNotificationsEnabled ?? true;
-    const notificationEmail = storeSettings?.notificationEmail || store.email; // Use store.email as a final fallback
-    const includeReasonForFlag = storeSettings?.includeReasonForFlag ?? true;
-    const includeOrderDetails = storeSettings?.includeOrderDetails ?? true;
-    const includeRecommendedAction =
-      storeSettings?.includeRecommendedAction ?? true;
-    const includeWavierLink = storeSettings?.includeWavierLink ?? false;
-    const autoHoldRiskyOrders = storeSettings?.autoHoldRiskyOrders ?? false;
-    const primaryAction = storeSettings?.primaryAction || "hold"; // Default to hold
-    // ----------------------------------------
-
-    if (customerRecord?.tags?.includes("BLOCKED")) {
-      await axios.post(
-        `${storeUrl}/admin/api/2025-07/orders/${order.id}/cancel.json`,
-        {
-          reason: "declined", // Or "fraud"
-          email: true,
-          note: "Order cancelled because the customer is on the blocked list in eComProtect.",
-        },
-        {
-          headers: {
-            "X-Shopify-Access-Token": storeAccessToken,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      res.status(200).send("❌ Order cancelled (blocked)");
+    // 4. Run Risk Analysis
+    if (!storeAccessToken) {
+      console.error(`\u274c Missing access token for ${shopDomain}`);
+      res.status(500).send("Missing store access token");
       return;
     }
 
     const riskResult = await calculateRiskyOrders({
-      storeId: storeId as string,
-      customerId: customerId as string,
-      storeUrl: storeUrl as string,
-      accessToken: storeAccessToken as string,
+      storeId,
+      customerId,
+      storeUrl,
+      accessToken: storeAccessToken,
     });
 
     const highRiskOrder = riskResult.orders.find((o) => o.flagged === true);
 
-    // Sync Shopify ID if it changed (e.g., found via fallback)
-    if (riskResult.customer.id && riskResult.customer.id !== customerId) {
-      console.log(`Syncing corrected Shopify Customer ID to DB: ${riskResult.customer.id}`);
-      await database
-        .update(customers)
-        .set({ id: riskResult.customer.id })
-        .where(eq(customers.email, customerEmail));
-    }
-
-    console.log("Risk Analysis Result:", {
-      isFlagged: !!highRiskOrder,
-      reasons: highRiskOrder?.reasons || [],
-      settings: {
-        autoHoldRiskyOrders,
-        primaryAction,
-        emailNotificationsEnabled
-      }
+    console.log("Analysis Result:", {
+      flagged: !!highRiskOrder,
+      action: storeSettings?.primaryAction,
+      automation: storeSettings?.autoHoldRiskyOrders
     });
 
-    // --- Action: Automatic Fulfillment Hold or Cancellation (Risky Orders) ---
-    if (highRiskOrder && autoHoldRiskyOrders) {
-      if (primaryAction === "hold") {
+    // 5. Automation Actions
+    if (highRiskOrder && storeSettings?.autoHoldRiskyOrders) {
+      if (storeSettings?.primaryAction === "hold") {
         try {
-          console.log(`Attempting to hold fulfillment for risky order: ${order.id}`);
-
-          // 1. Fetch fulfillment orders for the order
-          const fulfillmentOrdersResponse = await axios.get(
-            `${storeUrl}/admin/api/2025-07/orders/${order.id}/fulfillment_orders.json`,
-            {
-              headers: {
-                "X-Shopify-Access-Token": storeAccessToken,
-              },
-            }
+          console.log(`\u23f8\ufe0f Holding fulfillment for Order ${order.id}`);
+          const foRes = await axios.get(
+            `${storeUrl}/admin/api/2024-07/orders/${order.id}/fulfillment_orders.json`,
+            { headers: { "X-Shopify-Access-Token": storeAccessToken } }
           );
 
-          const openFulfillmentOrders =
-            fulfillmentOrdersResponse.data.fulfillment_orders.filter(
-              (fo: any) => fo.status === "open"
-            );
-
-          console.log(
-            `Found ${openFulfillmentOrders.length} open fulfillment orders to hold.`
-          );
-
-          // 2. Put each fulfillment order on hold
-          for (const fo of openFulfillmentOrders) {
+          const openFOs = foRes.data.fulfillment_orders.filter((fo: any) => fo.status === "open");
+          for (const fo of openFOs) {
             await axios.post(
-              `${storeUrl}/admin/api/2025-07/fulfillment_orders/${fo.id}/hold.json`,
+              `${storeUrl}/admin/api/2024-07/fulfillment_orders/${fo.id}/hold.json`,
               {
                 fulfillment_hold: {
                   reason: "other",
-                  reason_notes: `High-risk order detected by eComProtect. Reasons: ${highRiskOrder.reasons.join(", ")}`,
+                  reason_notes: `Detected high-risk by eComProtect: ${highRiskOrder.reasons.join(", ")}`,
                 },
               },
-              {
-                headers: {
-                  "X-Shopify-Access-Token": storeAccessToken,
-                  "Content-Type": "application/json",
-                },
-              }
+              { headers: { "X-Shopify-Access-Token": storeAccessToken, "Content-Type": "application/json" } }
             );
-            console.log(`Fulfillment order ${fo.id} placed on hold.`);
+            console.log(`\u2705 Hold applied to FO ${fo.id}`);
           }
-        } catch (holdError: any) {
-          console.error(
-            "Error placing fulfillment on hold:",
-            holdError?.response?.data || holdError.message
-          );
+        } catch (e: any) {
+          console.error("Fulfillment Hold Error:", e.response?.data || e.message);
         }
-      } else if (primaryAction === "auto_cancel") {
+      } else if (storeSettings?.primaryAction === "auto_cancel") {
         try {
-          console.log(`Attempting to automatically cancel risky order: ${order.id}`);
+          console.log(`\u26d4\ufe0f Cancelling Order ${order.id}`);
           await axios.post(
-            `${storeUrl}/admin/api/2025-07/orders/${order.id}/cancel.json`,
+            `${storeUrl}/admin/api/2024-07/orders/${order.id}/cancel.json`,
             {
               reason: "fraud",
               email: true,
-              note: `Automatically cancelled by eComProtect due to high risk. Reasons: ${highRiskOrder.reasons.join(", ")}`,
+              note: `eComProtect Auto-Cancellation: ${highRiskOrder.reasons.join(", ")}`,
             },
-            {
-              headers: {
-                "X-Shopify-Access-Token": storeAccessToken,
-                "Content-Type": "application/json",
-              },
-            }
+            { headers: { "X-Shopify-Access-Token": storeAccessToken, "Content-Type": "application/json" } }
           );
-          console.log(`Order ${order.id} automatically cancelled.`);
-        } catch (cancelError: any) {
-          console.error(
-            "Error automatically cancelling order:",
-            cancelError?.response?.data || cancelError.message
-          );
+          console.log("\u2705 Order cancelled.");
+        } catch (e: any) {
+          console.error("Cancellation Error:", e.response?.data || e.message);
         }
       }
     }
-    // ---------------------------------------------------------
 
-    // --- Conditional Email Sending Based on Settings ---
-    if (highRiskOrder && emailNotificationsEnabled) {
-      const emailSubject = `High-Risk Order Alert: ${order.name}`;
-      const orderLink = `${storeUrl}/admin/orders/${order.id}`;
-
-      // Prepare data for the template, now checking settings
-      const reasons = includeReasonForFlag
-        ? highRiskOrder.reasons
-        : ["Risk detected. Please check the order details."];
-
-      // NOTE: You'll need to update your highRiskOrderNotificationTemplate
-      // to accept these new options and conditionally render sections.
-      const emailHtml = highRiskOrderNotificationTemplate({
-        adminName: store.name || "Admin",
-        orderName: order.name,
-        customerEmail,
-        riskReasons: reasons,
-        orderLink: orderLink,
-        // Passing new flags to the template for advanced rendering
-        includeOrderDetails,
-        includeRecommendedAction,
-        includeWavierLink,
-        // You'll need logic to pass the actual content for these too
-        // recommendedAction: storeSettings?.primaryAction, // Example
-      });
-
-      try {
-        const emailSent = await sendEmail({
-          to: notificationEmail, // Use the configured notification email
-          subject: emailSubject,
-          htmlContent: emailHtml,
-        });
-
-        if (emailSent) {
-          console.log(
-            `Successfully sent high-risk alert email to ${notificationEmail} via Brevo.`
-          );
-        } else {
-          console.error(
-            `Failed to send high-risk alert email to ${notificationEmail}.`
-          );
-        }
-      } catch (emailError) {
-        console.error("Error sending high-risk email via Brevo:", emailError);
-      }
-    }
-
-    // Create in-app notification and send push for high-risk orders
+    // 6. Alert Notifications
     if (highRiskOrder) {
-      const notificationPayload = {
-        storeId: storeId as string,
+      if (storeSettings?.emailNotificationsEnabled) {
+          const orderDetails = order.line_items
+            ?.map((item: any) => `${item.title} (x${item.quantity})`)
+            .join("\n");
+
+          const emailHtml = highRiskOrderNotificationTemplate({
+            adminName: store.name || "Admin",
+            orderName: order.name,
+            customerEmail: customerEmail,
+            riskReasons: highRiskOrder.reasons,
+            orderLink: `${storeUrl}/admin/orders/${order.id}`,
+            includeOrderDetails: storeSettings?.includeOrderDetails ?? true,
+            includeReasonForFlag: storeSettings?.includeReasonForFlag ?? true,
+            includeRecommendedAction: storeSettings?.includeRecommendedAction ?? true,
+            includeWavierLink: storeSettings?.includeWavierLink ?? false,
+            orderDetails: orderDetails,
+            recommendedAction: storeSettings?.primaryAction === "hold" ? "Fulfillment Hold (Manual Review Required)" : "Automatic Cancellation",
+            waiverLink: `${process.env.FRONTEND_URL}/waiver/${order.id}`, // Assuming this exists or is a placeholder
+          });
+          
+          await sendEmail({
+            to: storeSettings.notificationEmail || store.email,
+            subject: `High Risk Alert: ${order.name}`,
+            htmlContent: emailHtml,
+          }).catch(e => console.error("Email Error:", e.message));
+      }
+      
+      await database.insert(notifications).values({
+        storeId,
         customerId: customerRecord.id,
         type: "HIGH_RISK_ORDER",
-        title: `High-Risk Order: ${order.name}`,
-        message: `Risk detected for order ${order.name} (${customerEmail}).`,
-        meta: {
-          orderId: `gid://shopify/Order/${order.id}`,
-          orderName: order.name,
-          reasons: highRiskOrder.reasons,
-        },
-      };
-      const [inserted] = await database
-        .insert(notifications)
-        .values(notificationPayload)
-        .returning({ id: notifications.id });
-      if (inserted?.id) {
-        sendPushToStore(storeId as string, {
-          title: notificationPayload.title,
-          message: notificationPayload.message,
-          notificationId: inserted.id,
-        }).catch(() => {});
-      }
+        title: `High Risk Order: ${order.name}`,
+        message: `High risk detected for ${order.name}`,
+        meta: { 
+          orderId: String(order.id), 
+          orderName: order.name, 
+          reasons: highRiskOrder.reasons 
+        }
+      } as any).catch(e => console.error("Notification Error:", e.message));
     }
-    // ----------------------------------------------------
 
-    res.status(200).send("✅ Webhook processed with risk check");
-  } catch (error: any) {
-    console.log("error", error);
-    res.status(500).send("❌ Error processing webhook");
+    res.status(200).send("\u2705 Success");
+  } catch (err: any) {
+    console.error("Webhook Fatal:", err.message);
+    res.status(500).send("\u274c Error");
   }
 };

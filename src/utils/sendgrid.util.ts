@@ -450,6 +450,7 @@ export const highRiskOrderNotificationTemplate = ({
   riskReasons,
   orderLink,
   includeOrderDetails,     // NEW
+  includeReasonForFlag,      // NEW
   includeRecommendedAction,  // NEW
   includeWavierLink,         // NEW
   orderDetails,              // NEW: Data for Order Details (e.g., items, address)
@@ -463,6 +464,7 @@ export const highRiskOrderNotificationTemplate = ({
   orderLink: string;
   // New Fields
   includeOrderDetails?: boolean;
+  includeReasonForFlag?: boolean;
   includeRecommendedAction?: boolean;
   includeWavierLink?: boolean;
   orderDetails?: string; // e.g., "Customer: John Doe, Items: Product A (1), Product B (2), Address: 123 Main St"
@@ -597,10 +599,12 @@ export const highRiskOrderNotificationTemplate = ({
 
             ${orderDetailsSection}
 
+            ${includeReasonForFlag !== false ? `
             <p><strong>Reason(s) for Flagging:</strong></p>
             <ul class="reasons-list">
                 ${riskReasons.map((reason) => `<li>${reason}</li>`).join("")}
             </ul>
+            ` : ''}
 
             ${recommendedActionSection}
 
