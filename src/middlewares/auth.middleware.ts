@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { users } from "@/schema/schema";
 import { database } from "@/configs/connection.config";
 import { eq } from "drizzle-orm";
+import status from "http-status";
 
 type User = typeof users.$inferSelect;
 
@@ -93,6 +94,21 @@ export const protectRoute = async (
 
 export const getCurrentUserId = (req: Request): string | null => {
   return req.user?.id || null;
+};
+
+export const adminOnly = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  if (req.user?.role !== "superadmin") {
+    res.status(status.FORBIDDEN).json({
+      error: "FORBIDDEN",
+      message: "You do not have administrative privileges to access this resource.",
+    });
+    return;
+  }
+  next();
 };
 
 export const ensureAuthenticated = async (req: Request): Promise<boolean> => {
