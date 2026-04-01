@@ -6,6 +6,7 @@ import { customers } from "@/schema/schema";
 import { eq } from "drizzle-orm";
 import axios from "axios";
 import { logActivity } from "@/service/logactivity.service";
+import { decrypt } from "@/service/encryption.service";
 
 export const blockCustomer = async (
   req: Request,
@@ -14,7 +15,8 @@ export const blockCustomer = async (
   try {
     const { customerId } = req.query;
     const storeUrl = req.user?.shopify_url;
-    const storeToken = req.user?.shopify_access_token;
+    const getStoreToken = req.user?.shopify_access_token;
+    const storeToken = getStoreToken ? decrypt(getStoreToken) : null;
 
     if (!customerId) {
       res
@@ -88,7 +90,8 @@ export const unblockCustomer = async (
   try {
     const { customerId } = req.query;
     const storeUrl = req.user?.shopify_url;
-    const storeToken = req.user?.shopify_access_token;
+    const getStoreToken = req.user?.shopify_access_token;
+    const storeToken = getStoreToken ? decrypt(getStoreToken) : null;
 
     if (!customerId) {
       res

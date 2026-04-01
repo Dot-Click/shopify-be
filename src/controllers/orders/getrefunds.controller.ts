@@ -4,6 +4,7 @@ import axios from "axios";
 import { database } from "@/configs/connection.config";
 import { users } from "@/schema/schema";
 import { eq } from "drizzle-orm";
+import { decrypt } from "@/service/encryption.service";
 
 /**
  * Fetch refund history of a specific customer from Shopify
@@ -34,7 +35,8 @@ export const getCustomerRefundHistoryFromShopify = async (
     }
 
     const storeUrl = userData?.shopify_url;
-    const accessToken = userData?.shopify_access_token;
+    const getAccessToken = userData?.shopify_access_token;
+    const accessToken = getAccessToken ? decrypt(getAccessToken) : null;
 
     console.log("customerId", customerId);
     console.log("Query ID:---->", req.query);

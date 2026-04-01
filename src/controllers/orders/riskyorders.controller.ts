@@ -4,13 +4,15 @@ import { calculateRiskyOrders } from "@/service/risk.service";
 import { Request, Response } from "express";
 import status from "http-status";
 import { eq } from "drizzle-orm";
+import { decrypt } from "@/service/encryption.service";
 
 export const getRiskyOrders = async (req: Request, res: Response) => {
   try {
     const storeId = req.user?.id;
     const customerId = req.query.customerId as string;
     const storeUrl = req.user?.shopify_url;
-    const accessToken = req.user?.shopify_access_token;
+    const getAccessToken = req.user?.shopify_access_token;
+    const accessToken = getAccessToken ? decrypt(getAccessToken) : null;
 
     if (!storeId || !customerId || !storeUrl || !accessToken) {
       res.status(status.BAD_REQUEST).json({

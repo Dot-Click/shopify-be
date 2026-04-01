@@ -7,6 +7,7 @@ import { calculateRiskyOrders } from "@/service/risk.service";
 import { highRiskOrderNotificationTemplate } from "@/utils/sendgrid.util";
 import { sendEmail } from "@/configs/brevo.config";
 import { createId } from "@paralleldrive/cuid2";
+import { decrypt } from "@/service/encryption.service";
 
 export const ordersCreateWebhook = async (
   req: Request,
@@ -46,7 +47,7 @@ export const ordersCreateWebhook = async (
 
     const storeId = store.id;
     const storeUrl = store.shopify_url?.startsWith("http") ? store.shopify_url : `https://${store.shopify_url}`;
-    const storeAccessToken = store.shopify_access_token;
+    const storeAccessToken = store.shopify_access_token ? decrypt(store.shopify_access_token) : null;
 
     // 2. Resolve Settings
     let storeSettings = await database.query.settings.findFirst({
