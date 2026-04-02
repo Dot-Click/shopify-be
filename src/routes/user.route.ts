@@ -4,13 +4,15 @@ import {
   imageUpload,
   incrementSearchCount,
   updateStoreStatusController,
+  updateStoreCredentialsController,
 } from "@/controllers/user.controller";
-import { protectRoute } from "@/middlewares/auth.middleware";
+import { adminOnly, protectRoute } from "@/middlewares/auth.middleware";
 
 const userRouter = Router();
 
 userRouter.get("/fetch", fetchStoresController);
 userRouter.put("/update", updateStoreStatusController);
+userRouter.put("/update-credentials", protectRoute, adminOnly, updateStoreCredentialsController);
 userRouter.put("/increment-searches", protectRoute, incrementSearchCount);
 
 userRouter.post("/upload-avatar", imageUpload);

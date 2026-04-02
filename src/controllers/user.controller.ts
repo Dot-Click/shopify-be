@@ -1,7 +1,7 @@
 import cloudinary from "@/configs/cloudinary.config";
 import { database } from "@/configs/connection.config";
 import { users } from "@/schema/schema";
-import { decrypt } from "@/service/encryption.service";
+import { decrypt, encrypt } from "@/service/encryption.service";
 import { logger } from "@/utils/logger.util";
 import { eq } from "drizzle-orm";
 import { Request, Response } from "express";
@@ -139,6 +139,62 @@ export const incrementSearchCount = async (
     logger.error("Error in incrementSearchCount:", error);
     res.status(status.INTERNAL_SERVER_ERROR).json({
       message: "An error occurred while incrementing search count.",
+    });
+  }
+};
+
+export const updateStoreCredentialsController = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { userId, shopify_api_key, shopify_access_token } = req.body;
+
+    if (!userId) {
+      res.status(status.BAD_REQUEST).json({
+        message: "User ID is required.",
+      });
+      return;
+    }
+
+    const store = await database.query.users.findFirst({
+      where: eq(users.id, userId),
+    });
+
+    if (!store) {
+      res.status(status.BAD_REQUEST).json({
+        message: "Store not found.",
+      });
+      return;
+    }
+
+    const updateData: any = {};
+    if (shopify_api_key) {
+      updateData.shopify_api_key = encrypt(shopify_api_key);
+    }
+    if (shopify_access_token) {
+      updateData.shopify_access_token = encrypt(shopify_access_token);
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      res.status(status.BAD_REQUEST).json({
+        message: "No credentials provided to update.",
+      });
+      return;
+    }
+
+    await database
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, userId));
+
+    res.status(status.OK).json({
+      message: "Store credentials updated successfully",
+    });
+  } catch (error) {
+    logger.error("Error in updateStoreCredentialsController:", error);
+    res.status(status.INTERNAL_SERVER_ERROR).json({
+      message: "An error occurred while updating store credentials.",
     });
   }
 };
