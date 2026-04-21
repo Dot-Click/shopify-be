@@ -289,6 +289,10 @@ export const calculateRiskyOrders = async ({
     ) {
       flagged = true;
       reasons.push("Customer became risky before this order");
+      // Add the specific reasons why the customer was flagged
+      if (customerRiskReasons.length > 0) {
+        reasons.push(...customerRiskReasons);
+      }
     }
 
     let refundsTotal = 0;

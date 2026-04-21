@@ -133,7 +133,7 @@ export const ordersCreateWebhook = async (
               {
                 fulfillment_hold: {
                   reason: "other",
-                  reason_notes: `Detected high-risk by eComProtect: ${highRiskOrder.reasons.join(", ")}`,
+                  reason_notes: `Fulfillment held by eComProtect. Identified risk factors: ${highRiskOrder.reasons.join("; ")}. Please perform a manual review before fulfilling.`,
                 },
               },
               { headers: { "X-Shopify-Access-Token": storeAccessToken, "Content-Type": "application/json" } }
