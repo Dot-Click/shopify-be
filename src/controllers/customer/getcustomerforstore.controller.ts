@@ -8,6 +8,11 @@ import { logger } from "@/utils/logger.util";
 import { calculateCustomerRisk } from "@/service/riskycustomer.service";
 import { logActivity } from "@/service/logactivity.service";
 import { decrypt } from "@/service/encryption.service";
+import {
+  buildReturnsSelection,
+  countLossEvents,
+  hasReturnAccessError,
+} from "@/service/shopify-loss-events.service";
 
 /** Check if customer email is in the store's exclusion list (Additional Configuration). */
 function isEmailExcluded(
@@ -67,7 +72,7 @@ export const getCustomerRefundsAcrossStores = async (
     const riskSettings = settingsResult[0];
     const exclusionList = riskSettings?.exclusionList ?? null;
 
-    const query = `
+    const buildCustomerSyncQuery = (includeReturns: boolean) => `
       {
         customers(first: 20) {
           edges {
@@ -94,6 +99,11 @@ export const getCustomerRefundsAcrossStores = async (
                       id
                       createdAt
                     }
+                    ${buildReturnsSelection({
+                      includeReturns,
+                      limit: 10,
+                      includeCreatedAt: true,
+                    })}
                   }
                 }
               }
@@ -103,18 +113,42 @@ export const getCustomerRefundsAcrossStores = async (
       }
     `;
 
-    const response = await axios.post(
+    const shopifyHeaders = {
+      "X-Shopify-Access-Token": accessToken,
+      "Content-Type": "application/json",
+    };
+
+    let includeReturns = true;
+    let response = await axios.post(
       `${storeUrl}/admin/api/2025-07/graphql.json`,
-      { query },
+      { query: buildCustomerSyncQuery(includeReturns) },
       {
-        headers: {
-          "X-Shopify-Access-Token": accessToken,
-          "Content-Type": "application/json",
-        },
+        headers: shopifyHeaders,
       }
     );
 
-    const customerEdges = response.data.data.customers.edges;
+    if (hasReturnAccessError(response.data?.errors)) {
+      includeReturns = false;
+      console.warn(
+        `Shopify return data unavailable for ${storeUrl}; syncing customers with refunds only.`
+      );
+      response = await axios.post(
+        `${storeUrl}/admin/api/2025-07/graphql.json`,
+        { query: buildCustomerSyncQuery(false) },
+        {
+          headers: shopifyHeaders,
+        }
+      );
+    }
+
+    if (response.data?.errors) {
+      console.error(
+        "Shopify GraphQL Errors while syncing customers:",
+        JSON.stringify(response.data.errors, null, 2)
+      );
+    }
+
+    const customerEdges = response.data.data?.customers?.edges ?? [];
 
     const upsertPromises = [];
 
@@ -126,11 +160,11 @@ export const getCustomerRefundsAcrossStores = async (
       let riskProfile = calculateCustomerRisk(node, riskSettings);
 
       const totalOrders = node.orders.edges.length;
-      const totalRefunds = node.orders.edges.reduce(
-        (acc: number, o: any) => acc + o.node.refunds.length,
+      const totalLossEvents = node.orders.edges.reduce(
+        (acc: number, o: any) => acc + countLossEvents(o.node),
         0
       );
-      if (totalRefunds > 0 && storeId) {
+      if (totalLossEvents > 0 && storeId) {
         refundedStores.add(storeId);
       }
       if (node.orders.edges.length > 0) {
@@ -201,7 +235,8 @@ export const getCustomerRefundsAcrossStores = async (
         customerId: node.id,
         meta: {
           totalOrders,
-          totalRefunds,
+          totalLossEvents,
+          returnsIncluded: includeReturns,
           ip: lastKnownIp,
           flagged: riskProfile.isFlagged,
         },
@@ -216,7 +251,7 @@ export const getCustomerRefundsAcrossStores = async (
         phone: node.phone ?? "N/A",
         address: node.defaultAddress ? `${node.defaultAddress.address1} ${node.defaultAddress.address2 || ''}, ${node.defaultAddress.city || ''}`.trim() : "",
         postCode: node.defaultAddress?.zip ?? "",
-        totalRefunded: String(totalRefunds),
+        totalRefunded: String(totalLossEvents),
         ip: lastKnownIp,
         totalOrders: totalOrders,
         flagged: riskProfile.isFlagged,

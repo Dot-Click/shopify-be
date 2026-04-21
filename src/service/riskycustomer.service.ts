@@ -1,3 +1,9 @@
+import {
+  getRiskRelevantReturns,
+  hasLossEvents,
+  type ShopifyReturnsValue,
+} from "@/service/shopify-loss-events.service";
+
 interface RiskSettings {
   createdAt: Date | null;
   updatedAt: Date | null;
@@ -13,6 +19,7 @@ interface CustomerOrder {
   node: {
     createdAt: string;
     refunds: { createdAt: string; id: string }[];
+    returns?: ShopifyReturnsValue;
   };
 }
 
@@ -26,30 +33,35 @@ export const calculateCustomerRisk = (
   customer: CustomerNode,
   settings: RiskSettings
 ): { isFlagged: boolean; riskLevel: number; riskReason: string } => {
-  //** get settings
   const { lostParcelThreshold, lostParcelPeriod, lossRateThreshold } = settings;
 
-  // TODO: no. of order refund in no. of month calculation
   const now = new Date();
   const periodStartDate = new Date(
     new Date().setMonth(now.getMonth() - lostParcelPeriod)
   );
 
-  const refundsInPeriod = customer.orders.edges.flatMap((order) =>
-    order.node.refunds.filter(
+  const lossEventsInPeriod = customer.orders.edges.flatMap((order) => {
+    const refundEvents = order.node.refunds.filter(
       (refund) => new Date(refund.createdAt) >= periodStartDate
-    )
-  );
+    );
+    const returnEvents = getRiskRelevantReturns(order.node).filter((returnRecord) => {
+      if (!returnRecord.createdAt) {
+        return false;
+      }
 
-  if (refundsInPeriod.length >= lostParcelThreshold) {
+      return new Date(returnRecord.createdAt) >= periodStartDate;
+    });
+
+    return [...refundEvents, ...returnEvents];
+  });
+
+  if (lossEventsInPeriod.length >= lostParcelThreshold) {
     return {
       isFlagged: true,
       riskLevel: 100,
-      riskReason: `Exceeded threshold: ${refundsInPeriod.length} refunds in the last ${lostParcelPeriod} months.`,
+      riskReason: `Exceeded threshold: ${lossEventsInPeriod.length} refund/return events in the last ${lostParcelPeriod} months.`,
     };
   }
-
-  // TODO: If user passes the Threshold (optional)
 
   const totalOrders = customer.orders.edges.length;
 
@@ -61,10 +73,10 @@ export const calculateCustomerRisk = (
     };
   }
 
-  const ordersWithRefunds = customer.orders.edges.filter(
-    (order) => order.node.refunds.length > 0
+  const ordersWithLossEvents = customer.orders.edges.filter((order) =>
+    hasLossEvents(order.node)
   );
-  const refundRate = (ordersWithRefunds.length / totalOrders) * 100;
+  const refundRate = (ordersWithLossEvents.length / totalOrders) * 100;
 
   if (typeof lossRateThreshold === "number" && lossRateThreshold > 0) {
     if (refundRate >= lossRateThreshold) {
@@ -73,22 +85,22 @@ export const calculateCustomerRisk = (
         riskLevel: Math.round(refundRate),
         riskReason: `Exceeded rate: ${refundRate.toFixed(
           0
-        )}% refund rate above ${lossRateThreshold}% threshold.`,
+        )}% refund/return rate above ${lossRateThreshold}% threshold.`,
       };
     }
     return {
       isFlagged: false,
       riskLevel: Math.round(refundRate),
-      riskReason: `Refund rate of ${refundRate.toFixed(
+      riskReason: `Refund/return rate of ${refundRate.toFixed(
         0
       )}% is within the safe limit.`,
     };
   }
 
-  // TODO: Return if there is customer is All Good :)
   return {
     isFlagged: false,
     riskLevel: 0,
-    riskReason: "Within time-based refund limits. No loss rate threshold set.",
+    riskReason:
+      "Within time-based refund/return limits. No loss rate threshold set.",
   };
 };

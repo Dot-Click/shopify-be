@@ -2,6 +2,13 @@ import { database } from "@/configs/connection.config";
 import { customers, orders, settings, users } from "@/schema/schema";
 import { eq, sql, and } from "drizzle-orm";
 import axios from "axios";
+import {
+  buildReturnsSelection,
+  countLossEvents,
+  getRiskRelevantReturns,
+  hasLossEvents,
+  hasReturnAccessError,
+} from "@/service/shopify-loss-events.service";
 
 interface ExclusionItem {
   id: string;
@@ -31,6 +38,108 @@ function isEmailExcluded(
     return false;
   }
 }
+
+const buildOrderSelection = (includeReturns: boolean) => `
+  id
+  name
+  createdAt
+  totalPriceSet {
+    shopMoney {
+      amount
+      currencyCode
+    }
+  }
+  riskLevel
+  refunds(first: 5) {
+    id
+    totalRefundedSet {
+      shopMoney {
+        amount
+        currencyCode
+      }
+    }
+  }
+  ${buildReturnsSelection({ includeReturns, limit: 5 })}
+  fulfillmentOrders(first: 5) {
+    nodes {
+      id
+      status
+      requestStatus
+      fulfillBy
+    }
+  }
+`;
+
+const buildCustomerByIdQuery = (includeReturns: boolean) => `
+  query($customerId: ID!) {
+    customer(id: $customerId) {
+      id
+      displayName
+      email
+      phone
+      orders(first: 100) {
+        edges {
+          node {
+            ${buildOrderSelection(includeReturns)}
+          }
+        }
+      }
+    }
+  }
+`;
+
+const buildCustomerByEmailQuery = (includeReturns: boolean) => `
+  query($emailQuery: String!) {
+    customers(first: 1, query: $emailQuery) {
+      edges {
+        node {
+          id
+          displayName
+          email
+          phone
+          orders(first: 100) {
+            edges {
+              node {
+                ${buildOrderSelection(includeReturns)}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const postShopifyQuery = async ({
+  storeUrl,
+  accessToken,
+  query,
+  variables,
+}: {
+  storeUrl?: string;
+  accessToken?: string;
+  query: string;
+  variables: Record<string, unknown>;
+}) => {
+  try {
+    return await axios.post(
+      `${storeUrl}/admin/api/2024-07/graphql.json`,
+      { query, variables },
+      {
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  } catch (axiosError: any) {
+    console.error(
+      "Axios error fetching from Shopify:",
+      axiosError.response?.data || axiosError.message
+    );
+    throw axiosError;
+  }
+};
 
 export const calculateRiskyOrders = async ({
   storeId,
@@ -64,12 +173,6 @@ export const calculateRiskyOrders = async ({
   const { totalOrders, totalRefunded, riskySince, email, phone, riskLevel } =
     customerRecord;
 
-  // Calculate percentage of refunds
-  const refundRate =
-    totalOrders && totalOrders > 0
-      ? (Number(totalRefunded) / totalOrders) * 100
-      : 0;
-
   // If customer email is in exclusion list, do not treat as risky (orders still appear, none flagged)
   const customerExcluded = isEmailExcluded(exclusionList, email);
 
@@ -92,13 +195,106 @@ export const calculateRiskyOrders = async ({
     crossStoreQuery.map((row: any) => row.storeId)
   ).size;
 
+  let includeReturns = true;
+  let response = await postShopifyQuery({
+    storeUrl,
+    accessToken,
+    query: buildCustomerByIdQuery(includeReturns),
+    variables: { customerId },
+  });
+
+  if (hasReturnAccessError(response.data?.errors)) {
+    includeReturns = false;
+    console.warn(
+      `Shopify return data unavailable for ${storeUrl}; risk checks will fall back to refunds only.`
+    );
+    response = await postShopifyQuery({
+      storeUrl,
+      accessToken,
+      query: buildCustomerByIdQuery(false),
+      variables: { customerId },
+    });
+  }
+
+  if (response.data?.errors) {
+    console.error(
+      "Shopify GraphQL Errors:",
+      JSON.stringify(response.data.errors, null, 2)
+    );
+  }
+
+  let customerData = response.data.data?.customer;
+
+  if (!customerData && email) {
+    console.log(
+      `Customer not found by ID (${customerId}). Attempting fallback search by email: ${email}`
+    );
+
+    let searchResponse = await postShopifyQuery({
+      storeUrl,
+      accessToken,
+      query: buildCustomerByEmailQuery(includeReturns),
+      variables: { emailQuery: `email:${email}` },
+    });
+
+    if (includeReturns && hasReturnAccessError(searchResponse.data?.errors)) {
+      includeReturns = false;
+      console.warn(
+        `Shopify return data unavailable for ${storeUrl}; email fallback will use refunds only.`
+      );
+      searchResponse = await postShopifyQuery({
+        storeUrl,
+        accessToken,
+        query: buildCustomerByEmailQuery(false),
+        variables: { emailQuery: `email:${email}` },
+      });
+    }
+
+    if (searchResponse.data?.errors) {
+      console.error(
+        "Shopify GraphQL Errors during email fallback:",
+        JSON.stringify(searchResponse.data.errors, null, 2)
+      );
+    }
+
+    const firstMatch = searchResponse.data.data?.customers?.edges?.[0]?.node;
+    if (firstMatch) {
+      console.log(`Found customer match via email search. New ID: ${firstMatch.id}`);
+      customerData = firstMatch;
+    }
+  }
+
+  if (!customerData) {
+    console.error(
+      "Shopify Response Data (Final Failure):",
+      JSON.stringify(response.data, null, 2)
+    );
+    throw new Error(
+      `Failed to fetch customer orders from Shopify. Customer ID: ${customerId}, Email: ${email}`
+    );
+  }
+
+  const shopifyOrders = customerData.orders.edges.map((edge: any) => edge.node);
+  const totalOrdersForRisk =
+    shopifyOrders.length > 0 ? shopifyOrders.length : Number(totalOrders || 0);
+  const ordersWithLossEvents = shopifyOrders.filter((ord: any) =>
+    hasLossEvents(ord)
+  ).length;
+  const totalLossEvents = shopifyOrders.reduce(
+    (sum: number, ord: any) => sum + countLossEvents(ord),
+    0
+  );
+  const refundRate =
+    totalOrdersForRisk > 0 ? (ordersWithLossEvents / totalOrdersForRisk) * 100 : 0;
+  const rateLabel = includeReturns ? "Refund/return" : "Refund";
+
   const customerRiskReasons: string[] = [];
   let isNowRisky = false;
 
   if (!customerExcluded && refundRate > (lossRateThreshold ?? 0)) {
     isNowRisky = true;
     customerRiskReasons.push(
-      `Refund rate ${refundRate.toFixed(
+      `${rateLabel} rate ${refundRate.toFixed(
         2
       )}% exceeds threshold ${lossRateThreshold}%`
     );
@@ -114,157 +310,6 @@ export const calculateRiskyOrders = async ({
       .set({ riskySince: effectiveRiskySince })
       .where(eq(customers.id, customerId));
   }
-
-  // ---- Fetch customer orders via Shopify API ----
-  const query = `
-    query {
-      customer(id: "${customerId}") {
-        id
-        displayName
-        email
-        phone
-        orders(first: 100) {
-          edges {
-            node {
-              id
-              name
-              createdAt
-              totalPriceSet {
-                shopMoney {
-                  amount
-                  currencyCode
-                }
-              }
-              riskLevel
-              refunds(first: 5) {                
-                id
-                totalRefundedSet {
-                  shopMoney {
-                    amount
-                    currencyCode
-                  }
-                }
-              }
-              fulfillmentOrders(first: 5) {
-                nodes {
-                  id
-                  status
-                  requestStatus
-                  fulfillBy
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
-
-  let response;
-  try {
-    response = await axios.post(
-      `${storeUrl}/admin/api/2024-07/graphql.json`,
-      { query, variables: { customerId } },
-      {
-        headers: {
-          "X-Shopify-Access-Token": accessToken,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-  } catch (axiosError: any) {
-    console.error("Axios error fetching from Shopify:", axiosError.response?.data || axiosError.message);
-    throw axiosError;
-  }
-
-  if (response.data.errors) {
-    console.error("Shopify GraphQL Errors:", JSON.stringify(response.data.errors, null, 2));
-  }
-
-  let customerData = response.data.data?.customer;
-
-  // Fallback: If searching by ID failed, try searching by email
-  if (!customerData && email) {
-    console.log(`Customer not found by ID (${customerId}). Attempting fallback search by email: ${email}`);
-    const searchQuery = `
-      query($emailQuery: String!) {
-        customers(first: 1, query: $emailQuery) {
-          edges {
-            node {
-              id
-              displayName
-              email
-              phone
-              orders(first: 100) {
-                edges {
-                  node {
-                    id
-                    name
-                    createdAt
-                    totalPriceSet {
-                      shopMoney {
-                        amount
-                        currencyCode
-                      }
-                    }
-                    riskLevel
-                    refunds(first: 5) {
-                      id
-                      totalRefundedSet {
-                        shopMoney {
-                          amount
-                          currencyCode
-                        }
-                      }
-                    }
-                    fulfillmentOrders(first: 5) {
-                      nodes {
-                        id
-                        status
-                        requestStatus
-                        fulfillBy
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    try {
-      const searchResponse = await axios.post(
-        `${storeUrl}/admin/api/2024-07/graphql.json`,
-        { 
-          query: searchQuery, 
-          variables: { emailQuery: `email:${email}` } 
-        },
-        {
-          headers: {
-            "X-Shopify-Access-Token": accessToken,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      const firstMatch = searchResponse.data.data?.customers?.edges?.[0]?.node;
-      if (firstMatch) {
-        console.log(`Found customer match via email search. New ID: ${firstMatch.id}`);
-        customerData = firstMatch;
-      }
-    } catch (searchError: any) {
-      console.error("Error during fallback email search:", searchError.message);
-    }
-  }
-
-  if (!customerData) {
-    console.error("Shopify Response Data (Final Failure):", JSON.stringify(response.data, null, 2));
-    throw new Error(`Failed to fetch customer orders from Shopify. Customer ID: ${customerId}, Email: ${email}`);
-  }
-
-  const shopifyOrders = customerData.orders.edges.map((edge: any) => edge.node);
 
   const orderResults: any[] = [];
 
@@ -304,10 +349,28 @@ export const calculateRiskyOrders = async ({
     }
 
     const totalAmount = Number(ord.totalPriceSet.shopMoney.amount);
+    const relevantReturns = getRiskRelevantReturns(ord);
 
     if (refundsTotal >= totalAmount) {
       flagged = true;
       reasons.push("Order fully refunded");
+    }
+
+    if (relevantReturns.length > 0) {
+      flagged = true;
+
+      if (relevantReturns.length === 1) {
+        const returnStatus = relevantReturns[0].status
+          ? relevantReturns[0].status.toLowerCase().replace(/_/g, " ")
+          : null;
+        reasons.push(
+          returnStatus
+            ? `Order has a ${returnStatus} return`
+            : "Order has a return"
+        );
+      } else {
+        reasons.push(`Order has ${relevantReturns.length} return records`);
+      }
     }
 
     if (ord.fulfillmentOrders && ord.fulfillmentOrders.nodes) {
@@ -364,6 +427,7 @@ export const calculateRiskyOrders = async ({
       manualFlag: null,
       reasons,
       refundsTotal,
+      returnsTotal: relevantReturns.length,
     });
   }
 
@@ -371,8 +435,8 @@ export const calculateRiskyOrders = async ({
     customer: {
       id: customerRecord.id,
       email: customerRecord.email,
-      totalOrders: customerRecord.totalOrders,
-      totalRefunded: customerRecord.totalRefunded,
+      totalOrders: totalOrdersForRisk,
+      totalRefunded: String(totalLossEvents || totalRefunded || 0),
       refundRate: refundRate.toFixed(2) + "%",
       isRisky: isNowRisky,
       riskySince: effectiveRiskySince,
