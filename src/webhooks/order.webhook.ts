@@ -140,6 +140,19 @@ export const ordersCreateWebhook = async (
             );
             console.log(`\u2705 Hold applied to FO ${fo.id}`);
           }
+
+          // Also update the general Order Note for visibility in the main dashboard
+          await axios.put(
+            `${storeUrl}/admin/api/2024-07/orders/${order.id}.json`,
+            {
+              order: {
+                id: order.id,
+                note: `eComProtect: Fulfillment on hold. Risk factors: ${highRiskOrder.reasons.join("; ")}`,
+              },
+            },
+            { headers: { "X-Shopify-Access-Token": storeAccessToken, "Content-Type": "application/json" } }
+          );
+          console.log(`\u2705 Main Order Note updated for Order ${order.id}`);
         } catch (e: any) {
           console.error("Fulfillment Hold Error:", e.response?.data || e.message);
         }
