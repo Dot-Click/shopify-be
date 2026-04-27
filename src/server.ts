@@ -31,7 +31,7 @@ import activityRouter from "./routes/activity.route";
 config();
 const app = express();
 const httpServer = createServer(app);
-const port = Number(process.env.PORT) || 3000;
+const port = Number(process.env.PORT) || 3001;
 const isProduction = process.env.NODE_ENV === "production";
 
 const corsOptions: CorsOptions = {

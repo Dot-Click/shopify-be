@@ -11,7 +11,7 @@ import {
   staffInvitationTemplate,
   storeInvitationAcceptedTemplate,
 } from "@/utils/sendgrid.util";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   registerOrderWebhook,
   registerRefundWebhook,
@@ -22,6 +22,22 @@ import { users } from "@/schema/schema";
 import { sendEmail } from "@/configs/brevo.config";
 
 const isProduction = process.env.NODE_ENV === "production";
+
+const normalizeEmail = (email: unknown) =>
+  typeof email === "string" ? email.trim() : "";
+
+const findUserByEmail = async (email: string) => {
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  return database.query.users.findFirst({
+    where: sql`lower(${users.email}) = ${normalizedEmail.toLowerCase()}`,
+  });
+};
+
 export const auth = betterAuth({
   database: drizzleAdapter(database, { provider: "pg", schema }),
   secret: env.COOKIE_SECRET,
@@ -63,43 +79,46 @@ export const auth = betterAuth({
     emailOTP({
       async sendVerificationOTP({ email, otp }) {
         try {
-          const user = await database.query.users.findFirst({
-            where: eq(schema.users.email, email),
-          });
+          const user = await findUserByEmail(email);
+          const recipientEmail = user?.email ?? normalizeEmail(email);
 
           let emailSubject = "";
           let emailHtml = "";
-          let userName = email.split("@")[0];
+          let userName = recipientEmail.split("@")[0];
 
           if (user && user.role === "sub-admin") {
             emailSubject = "Welcome! Please Verify Your Store's Email";
             userName = user.name || userName; // Use their actual name if available
             emailHtml = storeInvitationAcceptedTemplate({
               staffName: userName,
-              staffEmail: email,
-              dashboardLink: `${env.FRONTEND_DOMAIN}/verify-store?email=${email}&otp=${otp}`,
+              staffEmail: recipientEmail,
+              dashboardLink: `${env.FRONTEND_DOMAIN}/verify-store?email=${encodeURIComponent(
+                recipientEmail
+              )}&otp=${encodeURIComponent(otp)}`,
               companyName: "eComProtect",
             });
           } else {
             emailSubject = "You're Invited to Join Your Team!";
             emailHtml = staffInvitationTemplate({
               staffName: userName,
-              staffEmail: email,
-              invitationLink: `${env.FRONTEND_DOMAIN}/accept-invite?email=${email}&otp=${otp}`,
+              staffEmail: recipientEmail,
+              invitationLink: `${env.FRONTEND_DOMAIN}/accept-invite?email=${encodeURIComponent(
+                recipientEmail
+              )}&otp=${encodeURIComponent(otp)}`,
               companyName: "eComProtect", // You could even make this dynamic by looking up the store they belong to
             });
           }
 
           // --- Step 3: Construct and send the email ---
           const msg = {
-            to: email,
+            to: recipientEmail,
             subject: emailSubject,
             htmlContent: emailHtml,
           };
 
           await sendEmail(msg);
           console.log(
-            `Successfully sent '${emailSubject}' email to ${email} via SendGrid.`
+            `Successfully sent '${emailSubject}' email to ${recipientEmail} via SendGrid.`
           );
         } catch (error) {
           console.error("Failed to send verification email:", error);
@@ -229,6 +248,22 @@ export const auth = betterAuth({
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/sign-up/email") {
+        if (typeof ctx.body.email === "string") {
+          ctx.body.email = normalizeEmail(ctx.body.email).toLowerCase();
+        }
+
+        if (typeof ctx.body.shopify_url === "string") {
+          ctx.body.shopify_url = ctx.body.shopify_url.trim();
+        }
+
+        const existingByEmail = await findUserByEmail(ctx.body.email);
+
+        if (existingByEmail) {
+          throw new APIError("BAD_REQUEST", {
+            message: "Email already registered.",
+          });
+        }
+
         const shopify_url = ctx.body.shopify_url;
 
         const existing = await database.query.users.findFirst({
@@ -243,13 +278,16 @@ export const auth = betterAuth({
       }
 
       if (ctx.path === "/sign-in/email") {
-        const verified = ctx.body.email;
+        const submittedEmail = normalizeEmail(ctx.body.email);
+        ctx.body.email = submittedEmail;
 
-        const existing = await database.query.users.findFirst({
-          where: eq(users.email, verified),
-        });
+        const existing = await findUserByEmail(submittedEmail);
 
-        if (!existing?.emailVerified) {
+        if (existing) {
+          ctx.body.email = existing.email;
+        }
+
+        if (existing && !existing.emailVerified) {
           throw new APIError("FORBIDDEN", {
             message: "Only verified users can signin!",
           });
