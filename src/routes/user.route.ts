@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  deleteStoreController,
   fetchStoresController,
   imageUpload,
   incrementSearchCount,
@@ -12,6 +13,7 @@ const userRouter = Router();
 
 userRouter.get("/fetch", fetchStoresController);
 userRouter.put("/update", updateStoreStatusController);
+userRouter.delete("/:userId", protectRoute, adminOnly, deleteStoreController);
 userRouter.put("/update-credentials", protectRoute, adminOnly, updateStoreCredentialsController);
 userRouter.put("/increment-searches", protectRoute, incrementSearchCount);
 

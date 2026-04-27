@@ -1,6 +1,6 @@
 import cloudinary from "@/configs/cloudinary.config";
 import { database } from "@/configs/connection.config";
-import { users } from "@/schema/schema";
+import { users, verification } from "@/schema/schema";
 import { decrypt, encrypt } from "@/service/encryption.service";
 import { logger } from "@/utils/logger.util";
 import { registerOrderWebhook, registerRefundWebhook } from "@/utils/webhook.util";
@@ -69,6 +69,61 @@ export const updateStoreStatusController = async (
     logger.error("Error in updateStoreStatusController:", error);
     res.status(status.INTERNAL_SERVER_ERROR).json({
       message: "An error occurred while updating store status.",
+    });
+  }
+};
+
+export const deleteStoreController = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      res.status(status.BAD_REQUEST).json({
+        message: "User ID is required.",
+      });
+      return;
+    }
+
+    const store = await database.query.users.findFirst({
+      where: eq(users.id, userId),
+    });
+
+    if (!store) {
+      res.status(status.NOT_FOUND).json({
+        message: "Store not found.",
+      });
+      return;
+    }
+
+    if (store.role === "superadmin") {
+      res.status(status.FORBIDDEN).json({
+        message: "Superadmin accounts cannot be deleted from store management.",
+      });
+      return;
+    }
+
+    if (req.user?.id === userId) {
+      res.status(status.FORBIDDEN).json({
+        message: "You cannot delete your own account from store management.",
+      });
+      return;
+    }
+
+    await database.transaction(async (tx) => {
+      await tx.delete(verification).where(eq(verification.identifier, store.email));
+      await tx.delete(users).where(eq(users.id, userId));
+    });
+
+    res.status(status.OK).json({
+      message: "Store deleted successfully.",
+    });
+  } catch (error) {
+    logger.error("Error in deleteStoreController:", error);
+    res.status(status.INTERNAL_SERVER_ERROR).json({
+      message: "An error occurred while deleting the store.",
     });
   }
 };
