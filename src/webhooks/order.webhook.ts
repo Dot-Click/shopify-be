@@ -8,6 +8,7 @@ import { highRiskOrderNotificationTemplate } from "@/utils/sendgrid.util";
 import { sendEmail } from "@/configs/brevo.config";
 import { createId } from "@paralleldrive/cuid2";
 import { decrypt } from "@/service/encryption.service";
+import { env } from "@/utils/env.util";
 
 export const ordersCreateWebhook = async (
   req: Request,
@@ -177,31 +178,70 @@ export const ordersCreateWebhook = async (
 
     // 6. Alert Notifications
     if (highRiskOrder) {
-      if (storeSettings?.emailNotificationsEnabled) {
-          const orderDetails = order.line_items
-            ?.map((item: any) => `${item.title} (x${item.quantity})`)
-            .join("\n");
+      const orderDetails = order.line_items
+        ?.map((item: any) => `${item.title} (x${item.quantity})`)
+        .join("\n");
 
-          const emailHtml = highRiskOrderNotificationTemplate({
-            adminName: store.name || "Admin",
-            orderName: order.name,
-            customerEmail: customerEmail,
-            riskReasons: highRiskOrder.reasons,
-            orderLink: `${storeUrl}/admin/orders/${order.id}`,
-            includeOrderDetails: storeSettings?.includeOrderDetails ?? true,
-            includeReasonForFlag: storeSettings?.includeReasonForFlag ?? true,
-            includeRecommendedAction: storeSettings?.includeRecommendedAction ?? true,
-            includeWavierLink: storeSettings?.includeWavierLink ?? false,
-            orderDetails: orderDetails,
-            recommendedAction: storeSettings?.primaryAction === "hold" ? "Fulfillment Hold (Manual Review Required)" : "Automatic Cancellation",
-            waiverLink: `${process.env.FRONTEND_URL}/waiver/${order.id}`, // Assuming this exists or is a placeholder
-          });
-          
-          await sendEmail({
-            to: storeSettings.notificationEmail || store.email,
-            subject: `High Risk Alert: ${order.name}`,
-            htmlContent: emailHtml,
-          }).catch(e => console.error("Email Error:", e.message));
+      const recommendedAction =
+        storeSettings?.primaryAction === "hold"
+          ? "Fulfillment Hold (Manual Review Required)"
+          : "Automatic Cancellation";
+
+      const storeEmailHtml = highRiskOrderNotificationTemplate({
+        adminName: store.name || "Admin",
+        orderName: order.name,
+        customerEmail: customerEmail,
+        riskReasons: highRiskOrder.reasons,
+        orderLink: `${storeUrl}/admin/orders/${order.id}`,
+        includeOrderDetails: storeSettings?.includeOrderDetails ?? true,
+        includeReasonForFlag: storeSettings?.includeReasonForFlag ?? true,
+        includeRecommendedAction:
+          storeSettings?.includeRecommendedAction ?? true,
+        includeWavierLink: storeSettings?.includeWavierLink ?? false,
+        orderDetails: orderDetails,
+        recommendedAction,
+        waiverLink: `${env.FRONTEND_DOMAIN}/waiver/${order.id}`,
+      });
+
+      if (storeSettings?.emailNotificationsEnabled) {
+        await sendEmail({
+          to: storeSettings.notificationEmail || store.email,
+          subject: `High Risk Alert: ${order.name}`,
+          htmlContent: storeEmailHtml,
+        }).catch(e => console.error("Store email error:", e.message));
+      }
+
+      const superAdminEmail = env.ADMIN_EMAIL;
+      const storeNotificationEmail = storeSettings?.notificationEmail || store.email;
+
+      if (
+        superAdminEmail &&
+        superAdminEmail.toLowerCase() !== storeNotificationEmail?.toLowerCase()
+      ) {
+        const superAdminEmailHtml = highRiskOrderNotificationTemplate({
+          adminName: "Super Admin",
+          orderName: order.name,
+          customerEmail: customerEmail,
+          riskReasons: [
+            `Store: ${store.name || store.shopify_url || shopDomain}`,
+            ...highRiskOrder.reasons,
+          ],
+          orderLink: `${storeUrl}/admin/orders/${order.id}`,
+          includeOrderDetails: true,
+          includeReasonForFlag: true,
+          includeRecommendedAction: true,
+          includeWavierLink: false,
+          orderDetails,
+          recommendedAction,
+        });
+
+        await sendEmail({
+          to: superAdminEmail,
+          subject: `High Risk Alert: ${order.name} - ${
+            store.name || store.shopify_url || shopDomain
+          }`,
+          htmlContent: superAdminEmailHtml,
+        }).catch(e => console.error("Super admin email error:", e.message));
       }
       
       await database.insert(notifications).values({
