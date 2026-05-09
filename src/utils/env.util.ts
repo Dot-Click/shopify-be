@@ -36,6 +36,10 @@ const schemaObject = z.object({
   ENCRYPTION_KEY: z.string(),
   
   STRIPE_SECRET_KEY: z.string(),
+
+  SHOPIFY_API_KEY: z.string(),
+  SHOPIFY_API_SECRET: z.string(),
+  SHOPIFY_APP_URL: z.string(),
 });
 
 const envSchema = schemaObject.safeParse(process.env);

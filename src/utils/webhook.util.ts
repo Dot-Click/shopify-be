@@ -25,7 +25,7 @@ export async function registerOrderWebhook(
     callbackUrl: `${env.BACKEND_DOMAIN}/api/webhook/orders/create`,
   };
   const resp = await axios.post(
-    `${shopUrl}/admin/api/2024-07/graphql.json`,
+    `${shopUrl}/admin/api/2025-07/graphql.json`,
     { query: mutation, variables },
     {
       headers: {
@@ -61,7 +61,7 @@ export async function registerRefundWebhook(
     callbackUrl: `${env.BACKEND_DOMAIN}/api/webhook/refunds/create`,
   };
   const resp = await axios.post(
-    `${shopUrl}/admin/api/2024-07/graphql.json`,
+    `${shopUrl}/admin/api/2025-07/graphql.json`,
     { query: mutation, variables },
     {
       headers: {

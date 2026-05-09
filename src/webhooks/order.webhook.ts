@@ -19,7 +19,7 @@ export const ordersCreateWebhook = async (
     const customerEmail = order.customer?.email;
     const shopDomain = req.headers["x-shopify-shop-domain"] as string;
 
-    console.log(`\ud83d\udce9 Webhook from ${shopDomain} | Order: ${order.name}`);
+    console.log(`📩 Webhook from ${shopDomain} | Order: ${order.name}`);
 
     if (!shopDomain) {
       res.status(400).send("Missing shop domain header");
@@ -28,7 +28,7 @@ export const ordersCreateWebhook = async (
 
     if (!customerEmail) {
       console.log("Skipping webhook: No customer email found in order payload.");
-      res.status(200).send("\u2705 Skipped (No Email)");
+      res.status(200).send("✅ Skipped (No Email)");
       return;
     }
 
@@ -41,7 +41,7 @@ export const ordersCreateWebhook = async (
     });
 
     if (!store) {
-      console.error(`\u274c Store ${shopDomain} not found in DB.`);
+      console.error(`❌ Store ${shopDomain} not found in DB.`);
       res.status(404).send("Store not found");
       return;
     }
@@ -56,7 +56,7 @@ export const ordersCreateWebhook = async (
     });
 
     if (!storeSettings) {
-      console.log(`\u2699\ufe0f Initializing default settings for ${shopDomain}`);
+      console.log(`⚙️ Initializing default settings for ${shopDomain}`);
       const [newSettingsRecord] = await database.insert(settings).values({
         storeId,
         autoHoldRiskyOrders: true,
@@ -76,8 +76,8 @@ export const ordersCreateWebhook = async (
     });
 
     if (!customerRecord) {
-      console.log(`\ud83d\udc64 Creating record for new customer ${customerEmail}`);
-      const shopifyId = order.customer?.id 
+      console.log(`👤 Creating record for new customer ${customerEmail}`);
+      const shopifyId = order.customer?.id
         ? (String(order.customer.id).startsWith("gid://") ? order.customer.id : `gid://shopify/Customer/${order.customer.id}`)
         : `gid://shopify/Customer/${createId()}`;
 
@@ -85,7 +85,7 @@ export const ordersCreateWebhook = async (
         id: shopifyId,
         storeId,
         email: customerEmail,
-        name: `${order.customer?.first_name || ""} ${order.customer?.last_name || ""}`.trim() || customerEmail.split('@')[0],
+        name: `${order.customer?.first_name || ""} ${order.customer?.last_name || ""}`.trim() || customerEmail.split("@")[0],
         totalOrders: order.customer?.orders_count || 1,
         totalRefunded: "0.00",
         updatedAt: new Date(),
@@ -97,7 +97,7 @@ export const ordersCreateWebhook = async (
 
     // 4. Run Risk Analysis
     if (!storeAccessToken) {
-      console.error(`\u274c Missing access token for ${shopDomain}`);
+      console.error(`❌ Missing access token for ${shopDomain}`);
       res.status(500).send("Missing store access token");
       return;
     }
@@ -114,62 +114,131 @@ export const ordersCreateWebhook = async (
     console.log("Analysis Result:", {
       flagged: !!highRiskOrder,
       action: storeSettings?.primaryAction,
-      automation: storeSettings?.autoHoldRiskyOrders
+      automation: storeSettings?.autoHoldRiskyOrders,
     });
 
     // 5. Automation Actions
     if (highRiskOrder) {
+      // Normalise order ID to GID format once
+      const gOrderId = String(order.id).startsWith("gid://")
+        ? String(order.id)
+        : `gid://shopify/Order/${order.id}`;
+
       if (storeSettings?.primaryAction === "hold") {
         try {
-          console.log(`\u23f8\ufe0f Holding fulfillment for Order ${order.id}`);
-          const foRes = await axios.get(
-            `${storeUrl}/admin/api/2024-07/orders/${order.id}/fulfillment_orders.json`,
-            { headers: { "X-Shopify-Access-Token": storeAccessToken } }
+          console.log(`⏸️ Holding fulfillment for Order ${order.id}`);
+
+          // GraphQL: fetch open fulfillment orders for this order
+          const foGqlQuery = `
+            query getFulfillmentOrders($orderId: ID!) {
+              order(id: $orderId) {
+                fulfillmentOrders(first: 10) {
+                  nodes {
+                    id
+                    status
+                  }
+                }
+              }
+            }
+          `;
+          const foRes = await axios.post(
+            `${storeUrl}/admin/api/2025-07/graphql.json`,
+            { query: foGqlQuery, variables: { orderId: gOrderId } },
+            { headers: { "X-Shopify-Access-Token": storeAccessToken, "Content-Type": "application/json" } }
           );
 
-          const openFOs = foRes.data.fulfillment_orders.filter((fo: any) => fo.status === "open");
+          const foNodes: Array<{ id: string; status: string }> =
+            foRes.data?.data?.order?.fulfillmentOrders?.nodes ?? [];
+          const openFOs = foNodes.filter((fo) => fo.status === "OPEN");
+
+          // GraphQL: place a hold on each open fulfillment order
+          const holdMutation = `
+            mutation fulfillmentOrderHold($id: ID!, $fulfillmentHold: FulfillmentOrderHoldInput!) {
+              fulfillmentOrderHold(id: $id, fulfillmentHold: $fulfillmentHold) {
+                userErrors { message }
+              }
+            }
+          `;
           for (const fo of openFOs) {
-            await axios.post(
-              `${storeUrl}/admin/api/2024-07/fulfillment_orders/${fo.id}/hold.json`,
+            const holdRes = await axios.post(
+              `${storeUrl}/admin/api/2025-07/graphql.json`,
               {
-                fulfillment_hold: {
-                  reason: "other",
-                  reason_notes: `Fulfillment held by eComProtect. Identified risk factors: ${highRiskOrder.reasons.join("; ")}. Please perform a manual review before fulfilling.`,
+                query: holdMutation,
+                variables: {
+                  id: fo.id,
+                  fulfillmentHold: {
+                    reason: "OTHER",
+                    reasonNotes: `Fulfillment held by eComProtect. Identified risk factors: ${highRiskOrder.reasons.join("; ")}. Please perform a manual review before fulfilling.`,
+                    notifyMerchant: false,
+                  },
                 },
               },
               { headers: { "X-Shopify-Access-Token": storeAccessToken, "Content-Type": "application/json" } }
             );
-            console.log(`\u2705 Hold applied to FO ${fo.id}`);
+            const holdErrors = holdRes.data?.data?.fulfillmentOrderHold?.userErrors ?? [];
+            if (holdErrors.length > 0) {
+              console.error(`Hold errors for FO ${fo.id}:`, holdErrors);
+            } else {
+              console.log(`✅ Hold applied to FO ${fo.id}`);
+            }
           }
 
-          // Also update the general Order Note for visibility in the main dashboard
-          await axios.put(
-            `${storeUrl}/admin/api/2024-07/orders/${order.id}.json`,
+          // GraphQL: update order note for visibility in the Shopify dashboard
+          const orderUpdateMutation = `
+            mutation orderUpdate($input: OrderInput!) {
+              orderUpdate(input: $input) {
+                order { id }
+                userErrors { message }
+              }
+            }
+          `;
+          await axios.post(
+            `${storeUrl}/admin/api/2025-07/graphql.json`,
             {
-              order: {
-                id: order.id,
-                note: `eComProtect: Fulfillment on hold. Risk factors: ${highRiskOrder.reasons.join("; ")}`,
+              query: orderUpdateMutation,
+              variables: {
+                input: {
+                  id: gOrderId,
+                  note: `eComProtect: Fulfillment on hold. Risk factors: ${highRiskOrder.reasons.join("; ")}`,
+                },
               },
             },
             { headers: { "X-Shopify-Access-Token": storeAccessToken, "Content-Type": "application/json" } }
           );
-          console.log(`\u2705 Main Order Note updated for Order ${order.id}`);
+          console.log(`✅ Main Order Note updated for Order ${order.id}`);
         } catch (e: any) {
           console.error("Fulfillment Hold Error:", e.response?.data || e.message);
         }
       } else if (storeSettings?.primaryAction === "auto_cancel") {
         try {
-          console.log(`\u26d4\ufe0f Cancelling Order ${order.id}`);
-          await axios.post(
-            `${storeUrl}/admin/api/2024-07/orders/${order.id}/cancel.json`,
+          console.log(`⛔️ Cancelling Order ${order.id}`);
+
+          // GraphQL: cancel the order
+          const cancelMutation = `
+            mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $notifyCustomer: Boolean!) {
+              orderCancel(orderId: $orderId, reason: $reason, notifyCustomer: $notifyCustomer) {
+                orderCancelUserErrors { message }
+              }
+            }
+          `;
+          const cancelRes = await axios.post(
+            `${storeUrl}/admin/api/2025-07/graphql.json`,
             {
-              reason: "fraud",
-              email: true,
-              note: `eComProtect Auto-Cancellation: ${highRiskOrder.reasons.join(", ")}`,
+              query: cancelMutation,
+              variables: {
+                orderId: gOrderId,
+                reason: "FRAUD",
+                notifyCustomer: true,
+              },
             },
             { headers: { "X-Shopify-Access-Token": storeAccessToken, "Content-Type": "application/json" } }
           );
-          console.log("\u2705 Order cancelled.");
+          const cancelErrors = cancelRes.data?.data?.orderCancel?.orderCancelUserErrors ?? [];
+          if (cancelErrors.length > 0) {
+            console.error("Cancel errors:", cancelErrors);
+          } else {
+            console.log("✅ Order cancelled.");
+          }
         } catch (e: any) {
           console.error("Cancellation Error:", e.response?.data || e.message);
         }
@@ -208,7 +277,7 @@ export const ordersCreateWebhook = async (
           to: storeSettings.notificationEmail || store.email,
           subject: `High Risk Alert: ${order.name}`,
           htmlContent: storeEmailHtml,
-        }).catch(e => console.error("Store email error:", e.message));
+        }).catch((e) => console.error("Store email error:", e.message));
       }
 
       const superAdminEmail = env.ADMIN_EMAIL;
@@ -241,26 +310,26 @@ export const ordersCreateWebhook = async (
             store.name || store.shopify_url || shopDomain
           }`,
           htmlContent: superAdminEmailHtml,
-        }).catch(e => console.error("Super admin email error:", e.message));
+        }).catch((e) => console.error("Super admin email error:", e.message));
       }
-      
+
       await database.insert(notifications).values({
         storeId,
         customerId: customerRecord.id,
         type: "HIGH_RISK_ORDER",
         title: `High Risk Order: ${order.name}`,
         message: `High risk detected for ${order.name}`,
-        meta: { 
-          orderId: String(order.id), 
-          orderName: order.name, 
-          reasons: highRiskOrder.reasons 
-        }
-      } as any).catch(e => console.error("Notification Error:", e.message));
+        meta: {
+          orderId: String(order.id),
+          orderName: order.name,
+          reasons: highRiskOrder.reasons,
+        },
+      } as any).catch((e) => console.error("Notification Error:", e.message));
     }
 
-    res.status(200).send("\u2705 Success");
+    res.status(200).send("✅ Success");
   } catch (err: any) {
     console.error("Webhook Fatal:", err.message);
-    res.status(500).send("\u274c Error");
+    res.status(500).send("❌ Error");
   }
 };

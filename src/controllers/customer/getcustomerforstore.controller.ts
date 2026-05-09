@@ -169,21 +169,31 @@ export const getCustomerRefundsAcrossStores = async (
       }
       if (node.orders.edges.length > 0) {
         const mostRecentOrder = node.orders.edges[0].node;
-        const orderId = mostRecentOrder.legacyResourceId;
+        const legacyOrderId = mostRecentOrder.legacyResourceId;
+        const gidOrderId = `gid://shopify/Order/${legacyOrderId}`;
 
         try {
-          const orderDetailsResp = await axios.get(
-            `${storeUrl}/admin/api/2025-07/orders/${orderId}.json?fields=browser_ip`,
+          const ipQuery = `
+            query getOrderIP($id: ID!) {
+              order(id: $id) {
+                browserIp
+              }
+            }
+          `;
+          const orderIpResp = await axios.post(
+            `${storeUrl}/admin/api/2025-07/graphql.json`,
+            { query: ipQuery, variables: { id: gidOrderId } },
             {
               headers: {
                 "X-Shopify-Access-Token": accessToken,
+                "Content-Type": "application/json",
               },
             }
           );
-          lastKnownIp = orderDetailsResp.data.order.browser_ip;
+          lastKnownIp = orderIpResp.data?.data?.order?.browserIp ?? null;
         } catch (apiError: any) {
           console.error(
-            `Failed to fetch order ${orderId} for IP:`,
+            `Failed to fetch order ${legacyOrderId} for IP:`,
             apiError.response?.data || apiError.message
           );
         }

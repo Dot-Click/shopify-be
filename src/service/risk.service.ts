@@ -123,7 +123,7 @@ const postShopifyQuery = async ({
 }) => {
   try {
     return await axios.post(
-      `${storeUrl}/admin/api/2024-07/graphql.json`,
+      `${storeUrl}/admin/api/2025-07/graphql.json`,
       { query, variables },
       {
         headers: {

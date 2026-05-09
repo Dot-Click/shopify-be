@@ -1,7 +1,7 @@
 import { assignSocketToReqIO } from "@/middlewares/socket.middleware";
 import { connAuthBridge } from "@/middlewares/socket.middleware";
 import { prepareMigration } from "./utils/preparemigration.util";
-// import { throttle } from "./middlewares/throttle.middleware";
+import { throttle } from "./middlewares/throttle.middleware";
 import { registerEvents } from "@/utils/registerevents.util";
 import unknownRoutes from "@/routes/unknown.routes";
 import { swagger } from "@/configs/swagger.config";
@@ -27,6 +27,7 @@ import orderRouter from "./routes/order.route";
 import notificationRouter from "./routes/notification.route";
 import reportsRouter from "./routes/reports.route";
 import activityRouter from "./routes/activity.route";
+import shopifyRouter from "./routes/shopify.route";
 
 config();
 const app = express();
@@ -59,7 +60,7 @@ app.set("trust proxy", true);
 app.use(morgan("dev"));
 app.all("/api/auth/*splat", toNodeHandler(auth));
 
-// app.use(throttle("default"));
+app.use(throttle("default"));
 app.use(express.json());
 app.use("/api/payment", paymentRouter);
 app.use("/api/user", userRouter);
@@ -70,6 +71,7 @@ app.use("/api/notifications", notificationRouter);
 app.use("/api/webhook", webhookRouter);
 app.use("/api/reports", reportsRouter);
 app.use("/api/activity", activityRouter);
+app.use("/shopify", shopifyRouter);
 
 app.use(unknownRoutes);
 
