@@ -3,7 +3,7 @@ import { database } from "@/configs/connection.config";
 import { users, verification } from "@/schema/schema";
 import { decrypt, encrypt } from "@/service/encryption.service";
 import { logger } from "@/utils/logger.util";
-import { registerOrderWebhook, registerRefundWebhook } from "@/utils/webhook.util";
+import { registerRequiredWebhooks } from "@/utils/webhook.util";
 import { eq } from "drizzle-orm";
 import { Request, Response } from "express";
 import formidable from "formidable";
@@ -252,8 +252,7 @@ export const updateStoreCredentialsController = async (
         if (storeUrl) {
             try {
                 console.log(`\ud83d\udd04 Re-registering webhooks for ${storeUrl}...`);
-                await registerOrderWebhook(storeUrl, shopify_access_token);
-                await registerRefundWebhook(storeUrl, shopify_access_token);
+                await registerRequiredWebhooks(storeUrl, shopify_access_token);
                 console.log(`\u2705 Webhooks re-registered successfully for ${storeUrl}`);
             } catch (err: any) {
                 console.error(`\u274c Failed to re-register webhooks for ${storeUrl}:`, err.message);

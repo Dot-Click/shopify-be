@@ -1,74 +1,247 @@
 import axios from "axios";
 import { env } from "@/utils/env.util";
+import { logger } from "@/utils/logger.util";
+
+type RestWebhookTopic =
+  | "orders/create"
+  | "refunds/create"
+  | "customers/data_request"
+  | "customers/redact"
+  | "shop/redact"
+  | "app/uninstalled";
+
+type RequiredWebhookKey =
+  | "ORDERS_CREATE"
+  | "REFUNDS_CREATE"
+  | "CUSTOMERS_DATA_REQUEST"
+  | "CUSTOMERS_REDACT"
+  | "SHOP_REDACT"
+  | "APP_UNINSTALLED";
+
+interface RequiredWebhookDefinition {
+  key: RequiredWebhookKey;
+  topic: RestWebhookTopic;
+  path: string;
+}
+
+interface ShopifyWebhookRecord {
+  id: number;
+  address: string;
+  topic: string;
+}
+
+interface RegisteredWebhookResult {
+  key: RequiredWebhookKey;
+  topic: RestWebhookTopic;
+  address: string;
+  status: "created" | "existing";
+  id?: number;
+}
+
+interface RequiredWebhookVerification {
+  key: RequiredWebhookKey;
+  topic: RestWebhookTopic;
+  address: string;
+  registered: boolean;
+}
+
+interface RequiredWebhookRegistrationSummary {
+  registrations: RegisteredWebhookResult[];
+  verification: RequiredWebhookVerification[];
+  allRegistered: boolean;
+}
+
+const SHOPIFY_ADMIN_API_VERSION = "2025-07";
+
+const requiredWebhookDefinitions: RequiredWebhookDefinition[] = [
+  {
+    key: "ORDERS_CREATE",
+    topic: "orders/create",
+    path: "/api/webhook/orders/create",
+  },
+  {
+    key: "REFUNDS_CREATE",
+    topic: "refunds/create",
+    path: "/api/webhook/refunds/create",
+  },
+  {
+    key: "CUSTOMERS_DATA_REQUEST",
+    topic: "customers/data_request",
+    path: "/api/webhook/customers/data-request",
+  },
+  {
+    key: "CUSTOMERS_REDACT",
+    topic: "customers/redact",
+    path: "/api/webhook/customers/redact",
+  },
+  {
+    key: "SHOP_REDACT",
+    topic: "shop/redact",
+    path: "/api/webhook/shop/redact",
+  },
+  {
+    key: "APP_UNINSTALLED",
+    topic: "app/uninstalled",
+    path: "/api/webhook/app/uninstalled",
+  },
+];
+
+function buildWebhookAddress(path: string): string {
+  return new URL(path, env.BACKEND_DOMAIN).toString();
+}
+
+function shopifyHeaders(accessToken: string) {
+  return {
+    "X-Shopify-Access-Token": accessToken,
+    "Content-Type": "application/json",
+  };
+}
+
+async function fetchRegisteredWebhooks(
+  shopUrl: string,
+  accessToken: string
+): Promise<ShopifyWebhookRecord[]> {
+  const response = await axios.get(
+    `${shopUrl}/admin/api/${SHOPIFY_ADMIN_API_VERSION}/webhooks.json`,
+    {
+      headers: shopifyHeaders(accessToken),
+    }
+  );
+
+  return Array.isArray(response.data?.webhooks) ? response.data.webhooks : [];
+}
+
+async function ensureWebhookRegistered(
+  shopUrl: string,
+  accessToken: string,
+  webhook: RequiredWebhookDefinition,
+  existingWebhooks: ShopifyWebhookRecord[]
+): Promise<RegisteredWebhookResult> {
+  const address = buildWebhookAddress(webhook.path);
+  const existing = existingWebhooks.find(
+    (item) => item.topic === webhook.topic && item.address === address
+  );
+
+  if (existing) {
+    return {
+      key: webhook.key,
+      topic: webhook.topic,
+      address,
+      status: "existing",
+      id: existing.id,
+    };
+  }
+
+  const response = await axios.post(
+    `${shopUrl}/admin/api/${SHOPIFY_ADMIN_API_VERSION}/webhooks.json`,
+    {
+      webhook: {
+        topic: webhook.topic,
+        address,
+        format: "json",
+      },
+    },
+    {
+      headers: shopifyHeaders(accessToken),
+    }
+  );
+
+  const created = response.data?.webhook;
+
+  return {
+    key: webhook.key,
+    topic: webhook.topic,
+    address,
+    status: "created",
+    id: created?.id,
+  };
+}
+
+export async function registerRequiredWebhooks(
+  shopUrl: string,
+  accessToken: string
+): Promise<RequiredWebhookRegistrationSummary> {
+  const existingWebhooks = await fetchRegisteredWebhooks(shopUrl, accessToken);
+  const registrations: RegisteredWebhookResult[] = [];
+
+  for (const webhook of requiredWebhookDefinitions) {
+    const registration = await ensureWebhookRegistered(
+      shopUrl,
+      accessToken,
+      webhook,
+      existingWebhooks
+    );
+
+    registrations.push(registration);
+
+    if (registration.id) {
+      existingWebhooks.push({
+        id: registration.id,
+        topic: registration.topic,
+        address: registration.address,
+      });
+    }
+  }
+
+  const refreshedWebhooks = await fetchRegisteredWebhooks(shopUrl, accessToken);
+  const verification = requiredWebhookDefinitions.map((webhook) => {
+    const address = buildWebhookAddress(webhook.path);
+    const registered = refreshedWebhooks.some(
+      (item) => item.topic === webhook.topic && item.address === address
+    );
+
+    return {
+      key: webhook.key,
+      topic: webhook.topic,
+      address,
+      registered,
+    };
+  });
+
+  const allRegistered = verification.every((item) => item.registered);
+
+  logger.info(
+    `[Webhook] Registration summary: ${JSON.stringify(
+      {
+        shopUrl,
+        registrations,
+        verification,
+        allRegistered,
+      },
+      null,
+      2
+    )}`
+  );
+
+  return {
+    registrations,
+    verification,
+    allRegistered,
+  };
+}
 
 export async function registerOrderWebhook(
   shopUrl: string,
   accessToken: string
-) {
-  const mutation = `
-    mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $callbackUrl: URL!) {
-      webhookSubscriptionCreate(topic: $topic, webhookSubscription: {callbackUrl: $callbackUrl, format: JSON}) {
-        webhookSubscription {
-          id
-          topic
-          callbackUrl
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }
-  `;
-  const variables = {
-    topic: "ORDERS_CREATE",
-    callbackUrl: `${env.BACKEND_DOMAIN}/api/webhook/orders/create`,
-  };
-  const resp = await axios.post(
-    `${shopUrl}/admin/api/2025-07/graphql.json`,
-    { query: mutation, variables },
-    {
-      headers: {
-        "X-Shopify-Access-Token": accessToken,
-        "Content-Type": "application/json",
-      },
-    }
+): Promise<RegisteredWebhookResult> {
+  const existingWebhooks = await fetchRegisteredWebhooks(shopUrl, accessToken);
+  return ensureWebhookRegistered(
+    shopUrl,
+    accessToken,
+    requiredWebhookDefinitions[0],
+    existingWebhooks
   );
-  console.log("Order webhook:", resp.data.data.webhookSubscriptionCreate);
 }
 
 export async function registerRefundWebhook(
   shopUrl: string,
   accessToken: string
-) {
-  const mutation = `
-    mutation webhookSubscriptionCreate($topic: WebhookSubscriptionTopic!, $callbackUrl: URL!) {
-      webhookSubscriptionCreate(topic: $topic, webhookSubscription: {callbackUrl: $callbackUrl, format: JSON}) {
-        webhookSubscription {
-          id
-          topic
-          callbackUrl
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }
-  `;
-  const variables = {
-    topic: "REFUNDS_CREATE", // Shopify’s GraphQL topic for refund create :contentReference[oaicite:0]{index=0}
-    callbackUrl: `${env.BACKEND_DOMAIN}/api/webhook/refunds/create`,
-  };
-  const resp = await axios.post(
-    `${shopUrl}/admin/api/2025-07/graphql.json`,
-    { query: mutation, variables },
-    {
-      headers: {
-        "X-Shopify-Access-Token": accessToken,
-        "Content-Type": "application/json",
-      },
-    }
+): Promise<RegisteredWebhookResult> {
+  const existingWebhooks = await fetchRegisteredWebhooks(shopUrl, accessToken);
+  return ensureWebhookRegistered(
+    shopUrl,
+    accessToken,
+    requiredWebhookDefinitions[1],
+    existingWebhooks
   );
-  console.log("Refund webhook:", resp.data.data.webhookSubscriptionCreate);
 }

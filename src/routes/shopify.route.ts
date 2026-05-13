@@ -4,10 +4,7 @@ import { database } from "@/configs/connection.config";
 import { users } from "@/schema/schema";
 import { or, eq } from "drizzle-orm";
 import { encrypt } from "@/service/encryption.service";
-import {
-  registerOrderWebhook,
-  registerRefundWebhook,
-} from "@/utils/webhook.util";
+import { registerRequiredWebhooks } from "@/utils/webhook.util";
 import { env } from "@/utils/env.util";
 import { logger } from "@/utils/logger.util";
 import { createId } from "@paralleldrive/cuid2";
@@ -115,12 +112,20 @@ shopifyRouter.get("/callback", async (req: Request, res: Response): Promise<void
       logger.info(`[OAuth] Created new user record for store: ${shopDomain}`);
     }
 
-    // Register ORDERS_CREATE and REFUNDS_CREATE webhooks
+    // Register operational, compliance, and uninstall webhooks
     const shopUrl = `https://${shopDomain}`;
     try {
-      await registerOrderWebhook(shopUrl, accessToken);
-      await registerRefundWebhook(shopUrl, accessToken);
-      logger.info(`[OAuth] Webhooks registered for ${shopDomain}`);
+      const webhookSummary = await registerRequiredWebhooks(shopUrl, accessToken);
+      if (webhookSummary.allRegistered) {
+        logger.info(`[OAuth] All required webhooks registered for ${shopDomain}`);
+      } else {
+        const missingTopics = webhookSummary.verification
+          .filter((item) => !item.registered)
+          .map((item) => item.key);
+        logger.warn(
+          `[OAuth] Webhook verification incomplete for ${shopDomain}. Missing: ${missingTopics.join(", ")}`
+        );
+      }
     } catch (whErr: any) {
       // Non-fatal — log but do not block the OAuth flow
       logger.error(`[OAuth] Webhook registration failed for ${shopDomain}:`, whErr.message);
