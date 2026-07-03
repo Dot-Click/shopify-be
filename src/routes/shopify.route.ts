@@ -64,9 +64,12 @@ shopifyRouter.get("/callback", async (req: Request, res: Response): Promise<void
     const session = callbackResponse.session;
     const shopDomain = session.shop; // e.g. "storename.myshopify.com"
     const accessToken = session.accessToken!;
+    const tokenExpiresAt = session.expires ?? null; // Date | undefined → Date | null
     const encryptedToken = encrypt(accessToken);
 
-    logger.info(`[OAuth] Callback success for shop: ${shopDomain}`);
+    logger.info(
+      `[OAuth] Callback success for shop: ${shopDomain} — token expires: ${tokenExpiresAt ?? "no expiry returned"}`
+    );
 
     // Upsert user record
     const existingUser = await database.query.users.findFirst({
@@ -84,6 +87,7 @@ shopifyRouter.get("/callback", async (req: Request, res: Response): Promise<void
         .set({
           shopify_access_token: encryptedToken,
           shopify_api_key: env.SHOPIFY_API_KEY,
+          shopify_token_expires_at: tokenExpiresAt,
           updatedAt: new Date(),
         })
         .where(
@@ -105,6 +109,7 @@ shopifyRouter.get("/callback", async (req: Request, res: Response): Promise<void
         shopify_url: `https://${shopDomain}`,
         shopify_access_token: encryptedToken,
         shopify_api_key: env.SHOPIFY_API_KEY,
+        shopify_token_expires_at: tokenExpiresAt,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
